@@ -22,10 +22,11 @@ ui <- fluidPage(
   
   useShinyjs(),
   # Application title
-  titlePanel("Klassifikation von Normen"),
+  titlePanel("Klassifikation von Testwerten"),
   
   sidebarLayout(
     sidebarPanel(
+      textInput("parameter", "Name"),
       selectInput("confidence","Alpha",choices=c("10%"=90,"5%"=95)),
       sliderInput("reliability","Reliabilität",min=0,max=1,step=0.01,value=0.8),
       selectInput("scale","Skala",choices=c("IQ-Skala","Z-Skala","T-Skala","Stanine","Benutzerdefiniert")),
@@ -39,11 +40,11 @@ ui <- fluidPage(
         div(checkboxInput("autoRound",label="auto",value = F),style="padding-top:20px;padding-left:5px;"),
         cellArgs=list(style="overflow:visible"), cellWidths = c("60%","40%")
       ),
-      splitLayout(
-        actionButton("save_combination","Hinzufuegen",width="100%"),
-        actionButton("load_combination","Wert bearbeiten",width="100%"),
-        cellWidths = c("50%","50%")
-      )
+      actionButton("save_combination","Wert speichern"),
+      actionButton("load_combination","Wert bearbeiten"),
+      actionButton("new_combination","Neuen Wert hinzufuegen"),
+      actionButton("delete_combination","Wert(e) loeschen"),
+      
     ),
     
     mainPanel(
@@ -51,9 +52,10 @@ ui <- fluidPage(
       textOutput("confidence_bounds"),
       div(plotOutput("confidence_plot"),style="height:300px"),
       div(tableOutput("saved_values"), style="font-size:65%"),
-      actionButton("save_table","Speichern"),
+      actionButton("save_table","Datensatz speichern"),
       actionButton("load_table","Datensatz laden"),
-      actionButton("export","Exportieren"),
+      actionButton("new_table","Neuer Datensatz"),
+      actionButton("export","Exportieren (Word)"),
       style="font-size:20px"
       
     )
@@ -62,6 +64,8 @@ ui <- fluidPage(
 
 # Define server logic 
 server <- function(input, output,session) {
+  loaded_table <- NULL
+  edit_mode <- 0
   saved_tables <- list.files(pattern=".RData")
   if (length(saved_tables)==0){
     saved_values <- reactiveVal(data.frame(name=character(),
@@ -80,6 +84,7 @@ server <- function(input, output,session) {
     saved_tables_info <- file.info(saved_tables)
     saved_tables <- saved_tables[order(saved_tables_info$mtime,decreasing = T)]
     load(saved_tables[1])
+    loaded_table <- saved_tables[1]
     saved_values <- reactiveVal(s_values)
   }
   
@@ -93,9 +98,9 @@ server <- function(input, output,session) {
                value=paste(round(value,roundTo)),
                mw=paste(round(mw,roundTo)),
                std=paste(round(std,roundTo)),
-               avg_interval=paste("[",round(mw-std,roundTo),";",round(mw+std,roundTo),"]",sep=""),
+               avg_interval=paste("[",round(mw-std,roundTo),"; ",round(mw+std,roundTo),"]",sep=""),
                reliability=rel,
-               conf_interval=paste("[",round(conf_int[1],roundTo),";",round(conf_int[2],roundTo),"]",sep=""),
+               conf_interval=paste("[",round(conf_int[1],roundTo),"; ",round(conf_int[2],roundTo),"]",sep=""),
                classification=get_classification(conf_int, c(mw-std, mw+std)),
                scale=scale_name,
                confidence=conf,
@@ -168,7 +173,7 @@ server <- function(input, output,session) {
       x_errorshade = c(conf_interval[1],x[x>=conf_interval[1] & x<=conf_interval[2]], conf_interval[2])
       y_errorshade = c(0,y[x>=conf_interval[1] & x<=conf_interval[2]],0)
       polygon(x_errorshade, y_errorshade, col = rgb(0.7,0.1,0.1,0.2),border = NA) # Plot confidence interval
-      axis(side = 1, at = axis_bounds, pos = 0, lwd.ticks = 0,labels=c("","Unterdurchschnittlich", "Durchschnittlich","Überdurchschnittlich","")) # Plot axis
+      axis(side = 1, at = axis_bounds, pos = 0, lwd.ticks = 0,labels=c("","Unterdurchschnittlich", "Durchschnittlich","Ueberdurchschnittlich","")) # Plot axis
       
       # Plot legend
       legend(x=mw-3*std,y=max(y)*1.1,"Testwert", lty=1, col=rgb(0.7,0.1,0.1), box.lty = 0,lwd=2, bg="transparent")
@@ -178,8 +183,14 @@ server <- function(input, output,session) {
   },height=300)
   output$saved_values <- renderTable({
     s_values <- saved_values()
-    s_values <- s_values[,1:8]
-    names(s_values) <- c("Mass","Rohwert","MW","STD","Durchschnittb.","Reliabilitaet","KI","Klassifikation")
+    if (length(unique(s_values$scale))== 1 & unique(s_values$scale)[1]!= "Benutzerdefiniert"){
+      table_names <- c("Mass",sub("Skala", "Wert", unique(s_values$scale)),"Reliabilitaet","KI","Klassifikation")
+      s_values <- s_values[,c(1,2,6,7,8)]
+      names(s_values) <- table_names
+    } else{
+      s_values <- s_values[,1:8]
+      names(s_values) <- c("Mass","Rohwert","MW","STD","Durchschnittb.","Reliabilitaet","KI","Klassifikation")
+    }
     return(s_values)
   },align='l')
   observeEvent(input$autoRound, {
@@ -210,25 +221,24 @@ server <- function(input, output,session) {
     }
   })
   observeEvent(input$save_combination, {
-    showModal(modalDialog(
-      title = "Werte speichern",
-      textInput("save_name","Mass:",
-                value=input$scale),
-      actionButton("confirm_add","Bestaetigen"),
-      modalButton("Abbrechen"),
-      easyClose = T,
-      footer = NULL
-    ))
-  })
-  observeEvent(input$confirm_add, {
-    s_values <- saved_values()
-    if (is.element(input$save_name,s_values$name)){
-      s_values[s_values$name==input$save_name,] <- table_row(input$save_name, as.numeric(input$value), input$mw, input$std, input$reliability, input$confidence, input$roundTo,input$autoRound, input$scale)
-    }else{
-      s_values[nrow(s_values)+1,] <- table_row(input$save_name, as.numeric(input$value), input$mw, input$std, input$reliability, input$confidence, input$roundTo, input$autoRound, input$scale)
+    if (input$parameter != ""){
+      s_values <- saved_values()
+      if (edit_mode>0){
+        s_values[edit_mode,] <- table_row(input$parameter, as.numeric(input$value), input$mw, input$std, input$reliability, input$confidence, input$roundTo,input$autoRound, input$scale)
+      }else{
+        s_values[nrow(s_values)+1,] <- table_row(input$parameter, as.numeric(input$value), input$mw, input$std, input$reliability, input$confidence, input$roundTo, input$autoRound, input$scale)
+      }
+      saved_values(s_values)
+    } else {
+      showModal(modalDialog(
+        "Bitte zuerst Name eingeben!", br(),
+        modalButton("Ok"),
+        easyClose = T,
+        footer = NULL
+        
+      ))
     }
-    saved_values(s_values)
-    removeModal()
+
   })
   observeEvent(input$load_combination, {
     s_values <- saved_values()
@@ -254,23 +264,49 @@ server <- function(input, output,session) {
   })
   observeEvent(input$confirm_edit, {
     s_values <- saved_values()
+    edit_mode <<- which(s_values$name==input$select_edit)
     selected <- s_values[s_values$name==input$select_edit,]
     updateSelectInput(session, "scale", selected=selected$scale)
     if(selected$scale == 'Benutzerdefiniert'){
       updateTextInput(session, "mw", value=selected$MW)
       updateTextInput(session, "std", value=selected$STD)
     }
-    updateTextInput(session, "value", value=selected$Testwert)
+    updateTextInput(session, "parameter", value=selected$name)
+    updateTextInput(session, "value", value=selected$value)
     updateCheckboxInput(session, "autoRound",value=F)
     updateNumericInput(session, "roundTo",value=selected$roundTo)
     updateSliderInput(session, "reliability", value=selected$reliability)
     updateSelectInput(session, "confidence", selected=selected$confidence)
+    
+    removeModal()
+  })
+  observeEvent(input$new_combination, {
+    edit_mode <<- 0
+    updateTextInput(session, "parameter", value="")
+    updateTextInput(session, "value", value="")
+  })
+  observeEvent(input$delete_combination,{
+    s_values = saved_values()
+    choices = s_values$name
+    showModal(modalDialog(
+      title = "Werte loeschen",
+      selectInput("values_to_delete", "Auswaehlen:", choices = choices, multiple=T),
+      actionButton("confirm_delete","Loeschen"),
+      modalButton("Abbrechen"),
+      easyClose = T,
+      footer = NULL
+    ))
+  })
+  observeEvent(input$confirm_delete,{
+    s_values = saved_values()
+    s_values <- s_values[!is.element(s_values$name, input$values_to_delete),]
+    saved_values(s_values)
     removeModal()
   })
   observeEvent(input$save_table,{
     showModal(modalDialog(
       title = "Datensatz speichern",
-      textInput("dataset_name","Speichern als:"),
+      textInput("dataset_name","Speichern als:",sub(".RData", "",loaded_table)),
       actionButton("confirm_save","Bestaetigen"),
       modalButton("Abbrechen"),
       easyClose = T,
@@ -328,6 +364,34 @@ server <- function(input, output,session) {
       ))
     }
   })
+  observeEvent(input$new_table, {
+    showModal(modalDialog(
+      title="Neuer Datensatz",
+      "Sind Sie sich sicher, dass sie einen neuen Datensatz erstellen moechten? Alle nicht gespeicherten Aenderungen gehen verloren",
+      br(),
+      actionButton("confirm_new_table","Bestaetigen"),
+      modalButton("Abbrechen"),
+      easyClose = T,
+      footer = NULL
+    ))
+  })
+  observeEvent(input$confirm_new_table, {
+    s_values <- data.frame(name=character(),
+                           value=character(),
+                           mw=character(),
+                           std=character(),
+                           avg_interval=character(),
+                           reliability=double(),
+                           conf_interval=character(),
+                           classification=character(),
+                           scale=character(),
+                           confidence=integer(),
+                           roundTo=integer(),
+                           autoRound=logical())
+    loaded_table <<- NULL
+    saved_values(s_values)
+    removeModal()
+  })
   observeEvent(input$confirm_export,{
     set_flextable_defaults(
       font.size = 11, theme_fun = theme_vanilla,
@@ -337,15 +401,16 @@ server <- function(input, output,session) {
     names(s_values) <- c("Mass","Rohwert","Mittelwert der Rohwerte","Standardabweichung der Rohwerte",
                          "Durchschnittbereich der Rohwerte nach Westhoff und Kluck (2014)","Reliabilitaet",
                          "Konfidenzintervall des Testwerts","Klassifikation nach Westhoff und Kluck (2014)")
+    
     s_flex <- flextable(s_values)
     s_flex <- font(s_flex,fontname="Times New Roman",part="all")
     s_flex <- border_remove(s_flex)
-    # s_flex <- hline_top(s_flex, border = fp_border(style = "none"), part = "header")
     s_flex <- hline_top(s_flex, border = NULL, part = "body")
     s_flex <- border_inner_h(s_flex, border = NULL, part = "all")
     s_flex <- bold(s_flex,bold=F,part="header")
     s_flex <- align(s_flex, align="left",part="all")
     s_flex <- width(s_flex, width = c(1.4,1.4,2,2,3,1.4,2.4,2.5), unit = "cm")
+    s_flex <- padding(s_flex, padding = 0, part = "all")
     d <- read_docx()
     d <- body_add_flextable(d,value = s_flex)
     print(d, target = paste(input$export_to,".docx",sep=""))
