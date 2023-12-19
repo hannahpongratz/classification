@@ -51,6 +51,7 @@ ui <- fluidPage(
       textOutput("classification"),
       textOutput("confidence_bounds"),
       div(plotOutput("confidence_plot"),style="height:300px"),
+      textOutput("dataset_name"),
       div(tableOutput("saved_values"), style="font-size:65%"),
       actionButton("save_table","Datensatz speichern"),
       actionButton("load_table","Datensatz laden"),
@@ -64,7 +65,7 @@ ui <- fluidPage(
 
 # Define server logic 
 server <- function(input, output,session) {
-  loaded_table <- NULL
+  loaded_table <- reactiveVal()
   edit_mode <- 0
   saved_tables <- list.files(pattern=".RData")
   if (length(saved_tables)==0){
@@ -84,7 +85,7 @@ server <- function(input, output,session) {
     saved_tables_info <- file.info(saved_tables)
     saved_tables <- saved_tables[order(saved_tables_info$mtime,decreasing = T)]
     load(saved_tables[1])
-    loaded_table <- saved_tables[1]
+    loaded_table(sub(".RData", "", saved_tables[1]))
     saved_values <- reactiveVal(s_values)
   }
   
@@ -181,6 +182,7 @@ server <- function(input, output,session) {
       legend(x=mw-3*std,y=max(y)*0.96,"Normverteilung", lty=1,lwd=2, col="black", box.lty = 0, bg="transparent")
     }
   },height=300)
+  output$dataset_name <- renderText({loaded_table()})
   output$saved_values <- renderTable({
     s_values <- saved_values()
     if (length(unique(s_values$scale))== 1 & unique(s_values$scale)[1]!= "Benutzerdefiniert"){
@@ -238,7 +240,7 @@ server <- function(input, output,session) {
         
       ))
     }
-
+    
   })
   observeEvent(input$load_combination, {
     s_values <- saved_values()
@@ -306,7 +308,7 @@ server <- function(input, output,session) {
   observeEvent(input$save_table,{
     showModal(modalDialog(
       title = "Datensatz speichern",
-      textInput("dataset_name","Speichern als:",sub(".RData", "",loaded_table)),
+      textInput("dataset_name","Speichern als:",loaded_table()),
       actionButton("confirm_save","Bestaetigen"),
       modalButton("Abbrechen"),
       easyClose = T,
@@ -316,6 +318,7 @@ server <- function(input, output,session) {
   observeEvent(input$confirm_save,{
     s_values <- saved_values()
     save(s_values,file=paste(input$dataset_name,".RData",sep=""))
+    loaded_table(input$dataset_name)
     removeModal()
   })
   observeEvent(input$load_table,{
@@ -341,6 +344,7 @@ server <- function(input, output,session) {
   observeEvent(input$confirm_load, {
     load(paste(input$to_load, ".RData",sep=""))
     saved_values(s_values)
+    loaded_table <<- paste(input$to_load, ".RData",sep="")
     removeModal()
   })
   observeEvent(input$export,{
@@ -354,8 +358,9 @@ server <- function(input, output,session) {
     } else{
       showModal(modalDialog(
         title="Exportieren",
-        textInput("export_to","Dateiname:","test"),
-        checkboxInput("rel_table","Tabelle mit Reliabilitaeten hinzufuegen"),
+        textInput("export_to","Dateiname:","ZKEA"),
+        checkboxInput("rel_table","Tabelle mit Reliabilitaeten hinzufuegen",T),
+        checkboxInput("all_datasets","Alle gespeicherten Datensaetze einfuegen",T),
         br(),
         actionButton("confirm_export","Bestaetigen"),
         modalButton("Abbrechen"),
@@ -388,31 +393,79 @@ server <- function(input, output,session) {
                            confidence=integer(),
                            roundTo=integer(),
                            autoRound=logical())
-    loaded_table <<- NULL
+    loaded_table(NULL)
     saved_values(s_values)
     removeModal()
   })
-  observeEvent(input$confirm_export,{
-    set_flextable_defaults(
-      font.size = 11, theme_fun = theme_vanilla,
-      padding = 6)
-    s_values <- saved_values()
-    s_values <- s_values[,1:8]
-    names(s_values) <- c("Mass","Rohwert","Mittelwert der Rohwerte","Standardabweichung der Rohwerte",
-                         "Durchschnittbereich der Rohwerte nach Westhoff und Kluck (2014)","Reliabilitaet",
-                         "Konfidenzintervall des Testwerts","Klassifikation nach Westhoff und Kluck (2014)")
-    
-    s_flex <- flextable(s_values)
+  format_flex_table <- function(tab){
+    s_flex <- flextable(tab)
     s_flex <- font(s_flex,fontname="Times New Roman",part="all")
     s_flex <- border_remove(s_flex)
     s_flex <- hline_top(s_flex, border = NULL, part = "body")
     s_flex <- border_inner_h(s_flex, border = NULL, part = "all")
     s_flex <- bold(s_flex,bold=F,part="header")
     s_flex <- align(s_flex, align="left",part="all")
-    s_flex <- width(s_flex, width = c(1.4,1.4,2,2,3,1.4,2.4,2.5), unit = "cm")
     s_flex <- padding(s_flex, padding = 0, part = "all")
+    return(s_flex)
+  }
+  add_tables <- function(d,s_values, loaded_table){
+    my_format <- fp_text(font = "Times New Roman", font.size=11)
+    set_flextable_defaults(font.size = 11, theme_fun = theme_vanilla,padding = 6)
+    if (is.null(loaded_table)){
+      testname <- "Test"
+    } else {
+      testname <- loaded_table
+    }
+    if(input$rel_table){
+      rel_table <- s_values[,c("name","reliability")]
+      rel_table$classification <- unlist(lapply(rel_table[,2], function(x){
+        classes <- c("Inadaequat", "Adaequat", "Gut","Exzellent")
+        classes[max(which(x >= c(0, 0.6, 0.7, 0.8)))]
+      }))
+      names(rel_table) <- c("Mass","Wert", "Klassifikation nach Evers et al. (2013)")
+      rel_table_flex <- format_flex_table(rel_table)
+      rel_table_flex <- width(rel_table_flex, width = c(3,1.5,6), unit = "cm")
+      rel_table_flex <- set_caption(rel_table_flex, as_paragraph(as_i(as_chunk("Tabelle 0",my_format))
+                                                                 ,as_chunk(paste(". Zufallskritische Einzelfallauswertung des ",testname,", Reliabilitaet",sep=""),props = my_format)))
+    }
+    if (length(unique(s_values$scale))== 1 & unique(s_values$scale)[1]!= "Benutzerdefiniert"){
+      table_names <- c("Mass",sub("Skala", "Wert", unique(s_values$scale)),"Reliabilitaet","Konfidenzintervall des Testwerts","Klassifikation nach Westhoff und Kluck (2014)")
+      s_values <- s_values[,c(1,2,6,7,8)]
+      names(s_values) <- table_names
+      s_flex <- format_flex_table(s_values)
+      s_flex <- width(s_flex, width = c(2,1.5,2.1,4.8,5), unit = "cm")
+    } else{
+      s_values <- s_values[,1:8]
+      names(s_values) <- c("Mass","Rohwert","Mittelwert der Rohwerte","Standardabweichung der Rohwerte",
+                           "Durchschnittbereich der Rohwerte nach Westhoff und Kluck (2014)","Reliabilitaet",
+                           "Konfidenzintervall des Testwerts","Klassifikation nach Westhoff und Kluck (2014)")
+      s_flex <- format_flex_table(s_values)
+      s_flex <- width(s_flex, width = c(1.5,1.4,2,2,3,1.5,2.5,2.5), unit = "cm")
+    }
+    s_flex <- set_caption(s_flex, as_paragraph(as_i(as_chunk("Tabelle 0",my_format))
+                                               ,as_chunk(paste(". Zufallskritische Einzelfallauswertung des ",testname,", Konfidenzintervalle der wahren Testwerte",sep=""),props = my_format)))
+
+    if(input$rel_table){
+      d <- body_add_flextable(d,value = rel_table_flex,align="left")
+      d <- body_add_par(d,"")
+    }
+    d <- body_add_flextable(d,value = s_flex,align="left")
+    return(d)
+  }
+  observeEvent(input$confirm_export,{
     d <- read_docx()
-    d <- body_add_flextable(d,value = s_flex)
+
+    s_values <- saved_values()
+    d <- add_tables(d, s_values,loaded_table())
+    if(input$all_datasets){
+      datasets_tests <- list.files(pattern=".RData")
+      for (i in 1:length(datasets_tests)){
+        if (sub(".RData","",datasets_tests[i]) != loaded_table()){
+          load(datasets_tests[i])
+          d <- add_tables(d,s_values,sub(".RData","",datasets_tests[i]))
+        }
+      }
+    }
     print(d, target = paste(input$export_to,".docx",sep=""))
     removeModal()
   })
