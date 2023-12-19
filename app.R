@@ -356,11 +356,12 @@ server <- function(input, output,session) {
         footer = NULL
       ))
     } else{
+      choices <- unique(c(loaded_table(),sub(".RData","",list.files(pattern=".RData"))))
       showModal(modalDialog(
         title="Exportieren",
         textInput("export_to","Dateiname:","ZKEA"),
         checkboxInput("rel_table","Tabelle mit Reliabilitaeten hinzufuegen",T),
-        checkboxInput("all_datasets","Alle gespeicherten Datensaetze einfuegen",T),
+        selectInput("datasets_to_export","Dastensaetze auswaehlen",choices = choices, multiple = T, selected =loaded_table()),
         br(),
         actionButton("confirm_export","Bestaetigen"),
         modalButton("Abbrechen"),
@@ -372,7 +373,8 @@ server <- function(input, output,session) {
   observeEvent(input$new_table, {
     showModal(modalDialog(
       title="Neuer Datensatz",
-      "Sind Sie sich sicher, dass sie einen neuen Datensatz erstellen moechten? Alle nicht gespeicherten Aenderungen gehen verloren",
+      textInput("new_dataset_name","Testname:"),
+      "Hinweis: Alle nicht gespeicherten Aenderungen gehen verloren.",
       br(),
       actionButton("confirm_new_table","Bestaetigen"),
       modalButton("Abbrechen"),
@@ -393,7 +395,7 @@ server <- function(input, output,session) {
                            confidence=integer(),
                            roundTo=integer(),
                            autoRound=logical())
-    loaded_table(NULL)
+    loaded_table(input$new_dataset_name)
     saved_values(s_values)
     removeModal()
   })
@@ -444,7 +446,7 @@ server <- function(input, output,session) {
     }
     s_flex <- set_caption(s_flex, as_paragraph(as_i(as_chunk("Tabelle 0",my_format))
                                                ,as_chunk(paste(". Zufallskritische Einzelfallauswertung des ",testname,", Konfidenzintervalle der wahren Testwerte",sep=""),props = my_format)))
-
+    
     if(input$rel_table){
       d <- body_add_flextable(d,value = rel_table_flex,align="left")
       d <- body_add_par(d,"")
@@ -454,16 +456,13 @@ server <- function(input, output,session) {
   }
   observeEvent(input$confirm_export,{
     d <- read_docx()
-
-    s_values <- saved_values()
-    d <- add_tables(d, s_values,loaded_table())
-    if(input$all_datasets){
-      datasets_tests <- list.files(pattern=".RData")
-      for (i in 1:length(datasets_tests)){
-        if (sub(".RData","",datasets_tests[i]) != loaded_table()){
-          load(datasets_tests[i])
-          d <- add_tables(d,s_values,sub(".RData","",datasets_tests[i]))
-        }
+    datasets_tests <- input$datasets_to_export
+    for (i in 1:length(datasets_tests)){
+      if (datasets_tests[i] != loaded_table()){
+        load(paste(datasets_tests[i],"RData",sep="."))
+        d <- add_tables(d,s_values,datasets_tests[i])
+      } else {
+        d <- add_tables(d,saved_values(),loaded_table())
       }
     }
     print(d, target = paste(input$export_to,".docx",sep=""))
