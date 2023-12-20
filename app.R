@@ -8,6 +8,18 @@ flextable_loaded = require(flextable) # install.packages("flextable")
 
 scale_values <- data.frame(mw=c(100,100,50,5),std=c(15,10,10,2),row.names = c("IQ-Skala","Z-Skala","T-Skala","Stanine"))
 
+calc_confidence_interval <- function(test_value,  std, reliability, confidence,decimal_places=0){
+  confidence_interval <- qnorm(c((1-confidence/100)/2, 1-(1-confidence/100)/2)) * std * sqrt(1-reliability) + test_value
+  return(round(confidence_interval, decimal_places))
+}
+get_classification <- function(confidence_interval, boundaries){
+  c1 = min(which(confidence_interval[1] < c(boundaries, Inf)))
+  c2 = max(which(confidence_interval[2] > c(-Inf, boundaries)))
+  cs <- unique(c(c1,c2))
+  labels <- c("Unterdurchschnittlich", "Durchschnittlich","Überdurchschnittlich")
+  return(paste(paste(labels[cs],collapse=" - ")))
+}
+
 # Define UI for application 
 ui <- fluidPage(
   
@@ -431,17 +443,7 @@ server <- function(input, output,session) {
   }
   
 }
-calc_confidence_interval <- function(test_value,  std, reliability, confidence,decimal_places=0){
-  confidence_interval <- qnorm(c((1-confidence/100)/2, 1-(1-confidence/100)/2)) * std * sqrt(1-reliability) + test_value
-  return(round(confidence_interval, decimal_places))
-}
-get_classification <- function(confidence_interval, boundaries){
-  c1 = min(which(confidence_interval[1]<c(boundaries, Inf)))
-  c2 = max(which(confidence_interval[2]>c(-Inf, boundaries)))
-  cs <- unique(c(c1,c2))
-  labels <- c("Unterdurchschnittlich", "Durchschnittlich","Überdurchschnittlich")
-  return(paste(paste(labels[cs],collapse=" - ")))
-}
+
 
 empty_table_row <- function(){
   return(data.frame(name=character(),
