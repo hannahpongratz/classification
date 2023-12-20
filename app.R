@@ -1,22 +1,13 @@
 # Bitte shiny & shinyjs installieren!
 library(shiny) # install.packages("shiny")
 library(shinyjs) # install.packages("shinyjs")
+
 # Wenn direkt in Word exportiert werden soll bitte auch Pakete officer & flextable installieren
 officer_loaded = require(officer) # install.packages("officer")
 flextable_loaded = require(flextable) # install.packages("flextable")
 
 scale_values <- data.frame(mw=c(100,100,50,5),std=c(15,10,10,2),row.names = c("IQ-Skala","Z-Skala","T-Skala","Stanine"))
-calc_confidence_interval <- function(test_value,  std, reliability, confidence,decimal_places=0){
-  confidence_interval <- qnorm(c((1-confidence/100)/2, 1-(1-confidence/100)/2)) * std * sqrt(1-reliability) + test_value
-  return(round(confidence_interval, decimal_places))
-}
-get_classification <- function(confidence_interval, boundaries){
-  c1 = min(which(confidence_interval[1]<c(boundaries, Inf)))
-  c2 = max(which(confidence_interval[2]>c(-Inf, boundaries)))
-  cs <- unique(c(c1,c2))
-  labels <- c("Unterdurchschnittlich", "Durchschnittlich","Ueberdurchschnittlich")
-  return(paste(paste(labels[cs],collapse=" - ")))
-}
+
 # Define UI for application 
 ui <- fluidPage(
   
@@ -26,11 +17,11 @@ ui <- fluidPage(
   
   sidebarLayout(
     sidebarPanel(
-      textInput("parameter", "Name"),
+      textInput("parameter", "Name",""),
       selectInput("confidence","Alpha",choices=c("10%"=90,"5%"=95)),
       sliderInput("reliability","Reliabilität",min=0,max=1,step=0.01,value=0.8),
       selectInput("scale","Skala",choices=c("IQ-Skala","Z-Skala","T-Skala","Stanine","Benutzerdefiniert")),
-      textInput("value","Testwert",value="105"),
+      textInput("value","Testwert",value=""),
       conditionalPanel(condition="input.scale=='Benutzerdefiniert'",
                        textInput("mw","Mittelwert"),
                        textInput("std","Standardabweichung")
@@ -42,7 +33,7 @@ ui <- fluidPage(
       ),
       actionButton("save_combination","Wert speichern"),
       actionButton("load_combination","Wert bearbeiten"),
-      actionButton("new_combination","Neuen Wert hinzufuegen"),
+      actionButton("new_combination","Neuer Wert"),
       actionButton("delete_combination","Wert(e) loeschen"),
       
     ),
@@ -65,22 +56,15 @@ ui <- fluidPage(
 
 # Define server logic 
 server <- function(input, output,session) {
+  # Setup 
+  if (!(officer_loaded)&flextable_loaded){
+    hide("export")
+  } 
   loaded_table <- reactiveVal()
   edit_mode <- 0
   saved_tables <- list.files(pattern=".RData")
   if (length(saved_tables)==0){
-    saved_values <- reactiveVal(data.frame(name=character(),
-                                           value=character(),
-                                           mw=character(),
-                                           std=character(),
-                                           avg_interval=character(),
-                                           reliability=double(),
-                                           conf_interval=character(),
-                                           classification=character(),
-                                           scale=character(),
-                                           confidence=integer(),
-                                           roundTo=integer(),
-                                           autoRound=logical()))
+    saved_values <- reactiveVal(empty_table_row())
   } else {
     saved_tables_info <- file.info(saved_tables)
     saved_tables <- saved_tables[order(saved_tables_info$mtime,decreasing = T)]
@@ -89,25 +73,7 @@ server <- function(input, output,session) {
     saved_values <- reactiveVal(s_values)
   }
   
-  table_row <- function(name, value, mw, std, rel, conf, roundTo, autoRound, scale_name){
-    if (scale_name != "Benutzerdefiniert"){
-      mw <- scale_values[scale_name, "mw"]
-      std <- scale_values[scale_name, "std"]
-    }
-    conf_int <- calc_confidence_interval(as.numeric(value), std,rel, as.numeric(conf),decimal_places=roundTo)
-    data.frame(name=name,
-               value=paste(round(value,roundTo)),
-               mw=paste(round(mw,roundTo)),
-               std=paste(round(std,roundTo)),
-               avg_interval=paste("[",round(mw-std,roundTo),"; ",round(mw+std,roundTo),"]",sep=""),
-               reliability=rel,
-               conf_interval=paste("[",round(conf_int[1],roundTo),"; ",round(conf_int[2],roundTo),"]",sep=""),
-               classification=get_classification(conf_int, c(mw-std, mw+std)),
-               scale=scale_name,
-               confidence=conf,
-               roundTo=roundTo,
-               autoRound=autoRound)
-  }
+  # Outputs
   output$classification <- renderText({
     confidence <- as.numeric(input$confidence)
     test_value <- as.numeric(gsub(",", ".", input$value))
@@ -182,7 +148,9 @@ server <- function(input, output,session) {
       legend(x=mw-3*std,y=max(y)*0.96,"Normverteilung", lty=1,lwd=2, col="black", box.lty = 0, bg="transparent")
     }
   },height=300)
+  
   output$dataset_name <- renderText({loaded_table()})
+  
   output$saved_values <- renderTable({
     s_values <- saved_values()
     if (length(unique(s_values$scale))== 1 & unique(s_values$scale)[1]!= "Benutzerdefiniert"){
@@ -195,6 +163,8 @@ server <- function(input, output,session) {
     }
     return(s_values)
   },align='l')
+  
+  # Observes
   observeEvent(input$autoRound, {
     if (input$autoRound){
       shinyjs::disable("roundTo")
@@ -237,7 +207,6 @@ server <- function(input, output,session) {
         modalButton("Ok"),
         easyClose = T,
         footer = NULL
-        
       ))
     }
     
@@ -247,8 +216,8 @@ server <- function(input, output,session) {
     if (nrow(s_values>0)){
       options <- s_values$name
       showModal(modalDialog(
-        title = "Werte laden",
-        selectInput("select_edit","Werte auswaehlen",choices = options),
+        title = "Wert laden",
+        selectInput("select_edit","Wert auswaehlen",choices = options),
         actionButton("confirm_edit","Bestaetigen"),
         modalButton("Abbrechen"),
         easyClose = T,
@@ -256,8 +225,8 @@ server <- function(input, output,session) {
       ))
     } else{
       showModal(modalDialog(
-        title = "Werte laden",
-        "Noch keine gespeicherten Werte",
+        title = "Wert laden",
+        "Noch keine gespeicherten Werte",br(),
         modalButton("Abbrechen"),
         easyClose = T,
         footer = NULL
@@ -279,25 +248,36 @@ server <- function(input, output,session) {
     updateNumericInput(session, "roundTo",value=selected$roundTo)
     updateSliderInput(session, "reliability", value=selected$reliability)
     updateSelectInput(session, "confidence", selected=selected$confidence)
-    
+    updateActionButton(session, "save_combination","Aenderungen speichern")
     removeModal()
   })
   observeEvent(input$new_combination, {
     edit_mode <<- 0
+    updateActionButton(session, "save_combination","Wert speichern")
     updateTextInput(session, "parameter", value="")
     updateTextInput(session, "value", value="")
   })
   observeEvent(input$delete_combination,{
     s_values = saved_values()
-    choices = s_values$name
-    showModal(modalDialog(
-      title = "Werte loeschen",
-      selectInput("values_to_delete", "Auswaehlen:", choices = choices, multiple=T),
-      actionButton("confirm_delete","Loeschen"),
-      modalButton("Abbrechen"),
-      easyClose = T,
-      footer = NULL
-    ))
+    if (nrow(s_values)>0){
+      choices = s_values$name
+      showModal(modalDialog(
+        title = "Werte loeschen",
+        selectInput("values_to_delete", "Auswaehlen:", choices = choices, multiple=T),
+        actionButton("confirm_delete","Loeschen"),
+        modalButton("Abbrechen"),
+        easyClose = T,
+        footer = NULL
+      ))
+    }else{
+      showModal(modalDialog(
+        title = "Wert laden",
+        "Noch keine gespeicherten Werte",br(),
+        modalButton("Abbrechen"),
+        easyClose = T,
+        footer = NULL
+      ))
+    }
   })
   observeEvent(input$confirm_delete,{
     s_values = saved_values()
@@ -334,7 +314,7 @@ server <- function(input, output,session) {
       ))
     }else{
       showModal(modalDialog(
-        "Noch keine gespeicherten Datensaetze",
+        "Noch keine gespeicherten Datensaetze", br(),
         modalButton("Abbrechen"),
         easyClose = T,
         footer = NULL
@@ -348,27 +328,18 @@ server <- function(input, output,session) {
     removeModal()
   })
   observeEvent(input$export,{
-    if (!(officer_loaded & flextable_loaded)){
-      showModal(modalDialog(
-        "Package officer und/oder flextable nicht installiert. Kein Export in Word moeglich.",
-        modalButton("Abbrechen"),
-        easyClose = T,
-        footer = NULL
-      ))
-    } else{
-      choices <- unique(c(loaded_table(),sub(".RData","",list.files(pattern=".RData"))))
-      showModal(modalDialog(
-        title="Exportieren",
-        textInput("export_to","Dateiname:","ZKEA"),
-        checkboxInput("rel_table","Tabelle mit Reliabilitaeten hinzufuegen",T),
-        selectInput("datasets_to_export","Dastensaetze auswaehlen",choices = choices, multiple = T, selected =loaded_table()),
-        br(),
-        actionButton("confirm_export","Bestaetigen"),
-        modalButton("Abbrechen"),
-        easyClose = T,
-        footer = NULL
-      ))
-    }
+    choices <- unique(c(loaded_table(),sub(".RData","",list.files(pattern=".RData"))))
+    showModal(modalDialog(
+      title="Exportieren",
+      selectInput("datasets_to_export","Dastensaetze auswaehlen",choices = choices, multiple = T, selected =loaded_table()),
+      textInput("export_to","Dateiname:","ZKEA"),
+      "Hinweis: Existiert bereits ein Word-Dokument mit diesem Namen wird der Inhalt ueberschrieben",br(),
+      checkboxInput("rel_table","Tabelle mit Reliabilitaeten hinzufuegen",T),
+      actionButton("confirm_export","Bestaetigen"),
+      modalButton("Abbrechen"),
+      easyClose = T,
+      footer = NULL
+    ))
   })
   observeEvent(input$new_table, {
     showModal(modalDialog(
@@ -383,20 +354,23 @@ server <- function(input, output,session) {
     ))
   })
   observeEvent(input$confirm_new_table, {
-    s_values <- data.frame(name=character(),
-                           value=character(),
-                           mw=character(),
-                           std=character(),
-                           avg_interval=character(),
-                           reliability=double(),
-                           conf_interval=character(),
-                           classification=character(),
-                           scale=character(),
-                           confidence=integer(),
-                           roundTo=integer(),
-                           autoRound=logical())
+    s_values <- empty_table_row()
     loaded_table(input$new_dataset_name)
     saved_values(s_values)
+    removeModal()
+  })
+  observeEvent(input$confirm_export,{
+    d <- read_docx()
+    datasets_tests <- input$datasets_to_export
+    for (i in 1:length(datasets_tests)){
+      if (datasets_tests[i] != loaded_table()){
+        load(paste(datasets_tests[i],"RData",sep="."))
+        d <- add_tables(d,s_values,datasets_tests[i])
+      } else {
+        d <- add_tables(d,saved_values(),loaded_table())
+      }
+    }
+    print(d, target = paste(input$export_to,".docx",sep=""))
     removeModal()
   })
   format_flex_table <- function(tab){
@@ -412,7 +386,7 @@ server <- function(input, output,session) {
   }
   add_tables <- function(d,s_values, loaded_table){
     my_format <- fp_text(font = "Times New Roman", font.size=11)
-    set_flextable_defaults(font.size = 11, theme_fun = theme_vanilla,padding = 6)
+    set_flextable_defaults(font.size = 11, theme_fun = theme_vanilla)
     if (is.null(loaded_table)){
       testname <- "Test"
     } else {
@@ -428,7 +402,7 @@ server <- function(input, output,session) {
       rel_table_flex <- format_flex_table(rel_table)
       rel_table_flex <- width(rel_table_flex, width = c(3,1.5,6), unit = "cm")
       rel_table_flex <- set_caption(rel_table_flex, as_paragraph(as_i(as_chunk("Tabelle 0",my_format))
-                                                                 ,as_chunk(paste(". Zufallskritische Einzelfallauswertung des ",testname,", Reliabilitaet",sep=""),props = my_format)))
+                                                                 ,as_chunk(paste(". Zufallskritische Einzelfallauswertung des ",testname,", Reliabilitaet",sep=""),props = my_format)),fp_p = fp_par(padding = 0))
     }
     if (length(unique(s_values$scale))== 1 & unique(s_values$scale)[1]!= "Benutzerdefiniert"){
       table_names <- c("Mass",sub("Skala", "Wert", unique(s_values$scale)),"Reliabilitaet","Konfidenzintervall des Testwerts","Klassifikation nach Westhoff und Kluck (2014)")
@@ -445,31 +419,62 @@ server <- function(input, output,session) {
       s_flex <- width(s_flex, width = c(1.5,1.4,2,2,3,1.5,2.5,2.5), unit = "cm")
     }
     s_flex <- set_caption(s_flex, as_paragraph(as_i(as_chunk("Tabelle 0",my_format))
-                                               ,as_chunk(paste(". Zufallskritische Einzelfallauswertung des ",testname,", Konfidenzintervalle der wahren Testwerte",sep=""),props = my_format)))
+                                               ,as_chunk(paste(". Zufallskritische Einzelfallauswertung des ",testname,", Konfidenzintervalle der wahren Testwerte",sep=""),
+                                                         props = my_format)),fp_p = fp_par(padding = 0))
     
     if(input$rel_table){
-      d <- body_add_flextable(d,value = rel_table_flex,align="left")
+      d <- body_add_flextable(d, value = rel_table_flex,align="left")
       d <- body_add_par(d,"")
     }
     d <- body_add_flextable(d,value = s_flex,align="left")
     return(d)
   }
-  observeEvent(input$confirm_export,{
-    d <- read_docx()
-    datasets_tests <- input$datasets_to_export
-    for (i in 1:length(datasets_tests)){
-      if (datasets_tests[i] != loaded_table()){
-        load(paste(datasets_tests[i],"RData",sep="."))
-        d <- add_tables(d,s_values,datasets_tests[i])
-      } else {
-        d <- add_tables(d,saved_values(),loaded_table())
-      }
-    }
-    print(d, target = paste(input$export_to,".docx",sep=""))
-    removeModal()
-  })
+  
+}
+calc_confidence_interval <- function(test_value,  std, reliability, confidence,decimal_places=0){
+  confidence_interval <- qnorm(c((1-confidence/100)/2, 1-(1-confidence/100)/2)) * std * sqrt(1-reliability) + test_value
+  return(round(confidence_interval, decimal_places))
+}
+get_classification <- function(confidence_interval, boundaries){
+  c1 = min(which(confidence_interval[1]<c(boundaries, Inf)))
+  c2 = max(which(confidence_interval[2]>c(-Inf, boundaries)))
+  cs <- unique(c(c1,c2))
+  labels <- c("Unterdurchschnittlich", "Durchschnittlich","Ueberdurchschnittlich")
+  return(paste(paste(labels[cs],collapse=" - ")))
 }
 
-
+empty_table_row <- function(){
+  return(data.frame(name=character(),
+                    value=character(),
+                    mw=character(),
+                    std=character(),
+                    avg_interval=character(),
+                    reliability=double(),
+                    conf_interval=character(),
+                    classification=character(),
+                    scale=character(),
+                    confidence=integer(),
+                    roundTo=integer(),
+                    autoRound=logical()))
+}
+table_row <- function(name, value, mw, std, rel, conf, roundTo, autoRound, scale_name){
+  if (scale_name != "Benutzerdefiniert"){
+    mw <- scale_values[scale_name, "mw"]
+    std <- scale_values[scale_name, "std"]
+  }
+  conf_int <- calc_confidence_interval(as.numeric(value), std,rel, as.numeric(conf),decimal_places=roundTo)
+  data.frame(name=name,
+             value=paste(round(value,roundTo)),
+             mw=paste(round(mw,roundTo)),
+             std=paste(round(std,roundTo)),
+             avg_interval=paste("[",round(mw-std,roundTo),"; ",round(mw+std,roundTo),"]",sep=""),
+             reliability=rel,
+             conf_interval=paste("[",round(conf_int[1],roundTo),"; ",round(conf_int[2],roundTo),"]",sep=""),
+             classification=get_classification(conf_int, c(mw-std, mw+std)),
+             scale=scale_name,
+             confidence=conf,
+             roundTo=roundTo,
+             autoRound=autoRound)
+}
 # Run the application 
 shinyApp(ui = ui, server = server)
