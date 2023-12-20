@@ -34,7 +34,7 @@ ui <- fluidPage(
       actionButton("save_combination","Wert speichern"),
       actionButton("load_combination","Wert bearbeiten"),
       actionButton("new_combination","Neuer Wert"),
-      actionButton("delete_combination","Wert(e) loeschen"),
+      actionButton("delete_combination","Wert(e) löschen"),
       
     ),
     
@@ -90,11 +90,11 @@ server <- function(input, output,session) {
       c1 = min(which(confidence_interval[1]<c(boundaries, Inf)))
       c2 = max(which(confidence_interval[2]>c(-Inf, boundaries)))
       cs <- unique(c(c1,c2))
-      labels <- c("Unterdurchschnittlich", "Durchschnittlich","Ueberdurchschnittlich")
+      labels <- c("Unterdurchschnittlich", "Durchschnittlich","Überdurchschnittlich")
       return(paste("Klassifikation:", paste(labels[cs],collapse=" - ")))
       
     } else {
-      return("Keine zulaessigen Angaben")
+      return("Keine zulässigen Angaben")
     }
   })
   output$confidence_bounds <- renderText({
@@ -140,7 +140,7 @@ server <- function(input, output,session) {
       x_errorshade = c(conf_interval[1],x[x>=conf_interval[1] & x<=conf_interval[2]], conf_interval[2])
       y_errorshade = c(0,y[x>=conf_interval[1] & x<=conf_interval[2]],0)
       polygon(x_errorshade, y_errorshade, col = rgb(0.7,0.1,0.1,0.2),border = NA) # Plot confidence interval
-      axis(side = 1, at = axis_bounds, pos = 0, lwd.ticks = 0,labels=c("","Unterdurchschnittlich", "Durchschnittlich","Ueberdurchschnittlich","")) # Plot axis
+      axis(side = 1, at = axis_bounds, pos = 0, lwd.ticks = 0,labels=c("","Unterdurchschnittlich", "Durchschnittlich","Überdurchschnittlich","")) # Plot axis
       
       # Plot legend
       legend(x=mw-3*std,y=max(y)*1.1,"Testwert", lty=1, col=rgb(0.7,0.1,0.1), box.lty = 0,lwd=2, bg="transparent")
@@ -154,12 +154,12 @@ server <- function(input, output,session) {
   output$saved_values <- renderTable({
     s_values <- saved_values()
     if (length(unique(s_values$scale))== 1 & unique(s_values$scale)[1]!= "Benutzerdefiniert"){
-      table_names <- c("Mass",sub("Skala", "Wert", unique(s_values$scale)),"Reliabilitaet","KI","Klassifikation")
+      table_names <- c("Maß",sub("Skala", "Wert", unique(s_values$scale)),"Reliabilität","KI","Klassifikation")
       s_values <- s_values[,c(1,2,6,7,8)]
       names(s_values) <- table_names
     } else{
       s_values <- s_values[,1:8]
-      names(s_values) <- c("Mass","Rohwert","MW","STD","Durchschnittb.","Reliabilitaet","KI","Klassifikation")
+      names(s_values) <- c("Maß","Rohwert","MW","STD","Durchschnittb.","Reliabilität","KI","Klassifikation")
     }
     return(s_values)
   },align='l')
@@ -217,8 +217,8 @@ server <- function(input, output,session) {
       options <- s_values$name
       showModal(modalDialog(
         title = "Wert laden",
-        selectInput("select_edit","Wert auswaehlen",choices = options),
-        actionButton("confirm_edit","Bestaetigen"),
+        selectInput("select_edit","Wert auswählen",choices = options),
+        actionButton("confirm_edit","Bestätigen"),
         modalButton("Abbrechen"),
         easyClose = T,
         footer = NULL
@@ -248,7 +248,7 @@ server <- function(input, output,session) {
     updateNumericInput(session, "roundTo",value=selected$roundTo)
     updateSliderInput(session, "reliability", value=selected$reliability)
     updateSelectInput(session, "confidence", selected=selected$confidence)
-    updateActionButton(session, "save_combination","Aenderungen speichern")
+    updateActionButton(session, "save_combination","Änderungen speichern")
     removeModal()
   })
   observeEvent(input$new_combination, {
@@ -262,9 +262,9 @@ server <- function(input, output,session) {
     if (nrow(s_values)>0){
       choices = s_values$name
       showModal(modalDialog(
-        title = "Werte loeschen",
-        selectInput("values_to_delete", "Auswaehlen:", choices = choices, multiple=T),
-        actionButton("confirm_delete","Loeschen"),
+        title = "Werte löschen",
+        selectInput("values_to_delete", "Auswählen:", choices = choices, multiple=T),
+        actionButton("confirm_delete","Löschen"),
         modalButton("Abbrechen"),
         easyClose = T,
         footer = NULL
@@ -289,7 +289,7 @@ server <- function(input, output,session) {
     showModal(modalDialog(
       title = "Datensatz speichern",
       textInput("dataset_name","Speichern als:",loaded_table()),
-      actionButton("confirm_save","Bestaetigen"),
+      actionButton("confirm_save","Bestätigen"),
       modalButton("Abbrechen"),
       easyClose = T,
       footer = NULL
@@ -307,14 +307,14 @@ server <- function(input, output,session) {
       showModal(modalDialog(
         title = "Datensatz speichern",
         selectInput("to_load","Datensatz:", choices = file_names),
-        actionButton("confirm_load","Bestaetigen"),
+        actionButton("confirm_load","Bestätigen"),
         modalButton("Abbrechen"),
         easyClose = T,
         footer = NULL
       ))
     }else{
       showModal(modalDialog(
-        "Noch keine gespeicherten Datensaetze", br(),
+        "Noch keine gespeicherten Datensätze", br(),
         modalButton("Abbrechen"),
         easyClose = T,
         footer = NULL
@@ -331,11 +331,11 @@ server <- function(input, output,session) {
     choices <- unique(c(loaded_table(),sub(".RData","",list.files(pattern=".RData"))))
     showModal(modalDialog(
       title="Exportieren",
-      selectInput("datasets_to_export","Dastensaetze auswaehlen",choices = choices, multiple = T, selected =loaded_table()),
+      selectInput("datasets_to_export","Dastensätze auswählen",choices = choices, multiple = T, selected =loaded_table()),
       textInput("export_to","Dateiname:","ZKEA"),
-      "Hinweis: Existiert bereits ein Word-Dokument mit diesem Namen wird der Inhalt ueberschrieben",br(),
-      checkboxInput("rel_table","Tabelle mit Reliabilitaeten hinzufuegen",T),
-      actionButton("confirm_export","Bestaetigen"),
+      "Hinweis: Existiert bereits ein Word-Dokument mit diesem Namen wird der Inhalt überschrieben",br(),
+      checkboxInput("rel_table","Tabelle mit Reliabilitäten hinzufügen",T),
+      actionButton("confirm_export","Bestätigen"),
       modalButton("Abbrechen"),
       easyClose = T,
       footer = NULL
@@ -345,9 +345,9 @@ server <- function(input, output,session) {
     showModal(modalDialog(
       title="Neuer Datensatz",
       textInput("new_dataset_name","Testname:"),
-      "Hinweis: Alle nicht gespeicherten Aenderungen gehen verloren.",
+      "Hinweis: Alle nicht gespeicherten Änderungen gehen verloren.",
       br(),
-      actionButton("confirm_new_table","Bestaetigen"),
+      actionButton("confirm_new_table","Bestätigen"),
       modalButton("Abbrechen"),
       easyClose = T,
       footer = NULL
@@ -395,25 +395,25 @@ server <- function(input, output,session) {
     if(input$rel_table){
       rel_table <- s_values[,c("name","reliability")]
       rel_table$classification <- unlist(lapply(rel_table[,2], function(x){
-        classes <- c("Inadaequat", "Adaequat", "Gut","Exzellent")
+        classes <- c("Inadäquat", "Adäquat", "Gut","Exzellent")
         classes[max(which(x >= c(0, 0.6, 0.7, 0.8)))]
       }))
-      names(rel_table) <- c("Mass","Wert", "Klassifikation nach Evers et al. (2013)")
+      names(rel_table) <- c("Maß","Wert", "Klassifikation nach Evers et al. (2013)")
       rel_table_flex <- format_flex_table(rel_table)
       rel_table_flex <- width(rel_table_flex, width = c(3,1.5,6), unit = "cm")
       rel_table_flex <- set_caption(rel_table_flex, as_paragraph(as_i(as_chunk("Tabelle 0",my_format))
-                                                                 ,as_chunk(paste(". Zufallskritische Einzelfallauswertung des ",testname,", Reliabilitaet",sep=""),props = my_format)),fp_p = fp_par(padding = 0))
+                                                                 ,as_chunk(paste(". Zufallskritische Einzelfallauswertung des ",testname,", Reliabilität",sep=""),props = my_format)),fp_p = fp_par(padding = 0))
     }
     if (length(unique(s_values$scale))== 1 & unique(s_values$scale)[1]!= "Benutzerdefiniert"){
-      table_names <- c("Mass",sub("Skala", "Wert", unique(s_values$scale)),"Reliabilitaet","Konfidenzintervall des Testwerts","Klassifikation nach Westhoff und Kluck (2014)")
+      table_names <- c("Maßs",sub("Skala", "Wert", unique(s_values$scale)),"Reliabilität","Konfidenzintervall des Testwerts","Klassifikation nach Westhoff und Kluck (2014)")
       s_values <- s_values[,c(1,2,6,7,8)]
       names(s_values) <- table_names
       s_flex <- format_flex_table(s_values)
       s_flex <- width(s_flex, width = c(2,1.5,2.1,4.8,5), unit = "cm")
     } else{
       s_values <- s_values[,1:8]
-      names(s_values) <- c("Mass","Rohwert","Mittelwert der Rohwerte","Standardabweichung der Rohwerte",
-                           "Durchschnittbereich der Rohwerte nach Westhoff und Kluck (2014)","Reliabilitaet",
+      names(s_values) <- c("Maß","Rohwert","Mittelwert der Rohwerte","Standardabweichung der Rohwerte",
+                           "Durchschnittbereich der Rohwerte nach Westhoff und Kluck (2014)","Reliabilität",
                            "Konfidenzintervall des Testwerts","Klassifikation nach Westhoff und Kluck (2014)")
       s_flex <- format_flex_table(s_values)
       s_flex <- width(s_flex, width = c(1.5,1.4,2,2,3,1.5,2.5,2.5), unit = "cm")
@@ -439,7 +439,7 @@ get_classification <- function(confidence_interval, boundaries){
   c1 = min(which(confidence_interval[1]<c(boundaries, Inf)))
   c2 = max(which(confidence_interval[2]>c(-Inf, boundaries)))
   cs <- unique(c(c1,c2))
-  labels <- c("Unterdurchschnittlich", "Durchschnittlich","Ueberdurchschnittlich")
+  labels <- c("Unterdurchschnittlich", "Durchschnittlich","Überdurchschnittlich")
   return(paste(paste(labels[cs],collapse=" - ")))
 }
 
