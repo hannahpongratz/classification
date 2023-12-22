@@ -1,3 +1,6 @@
+# Zitationsvorschlag: 
+# Pongratz, H. (2023). Klassifikation von Verfahrensergebnissen.  Verfügbar unter: https://github.com/hannahpongratz/classification [Zugriffsdatum].
+
 # Bitte shiny & shinyjs installieren!
 library(shiny) # install.packages("shiny")
 library(shinyjs) # install.packages("shinyjs")
@@ -25,7 +28,7 @@ ui <- fluidPage(
   
   useShinyjs(),
   # Application title
-  titlePanel("Klassifikation von Testwerten"),
+  titlePanel("Klassifikation von Verfahrensergebnissen"),
   
   sidebarLayout(
     sidebarPanel(
@@ -60,8 +63,10 @@ ui <- fluidPage(
       actionButton("load_table","Datensatz laden"),
       actionButton("new_table","Neuer Datensatz"),
       actionButton("export","Exportieren (Word)"),
-      style="font-size:20px"
       
+      style="font-size:20px",
+      div(br(),"Zitationsvorschlag: Pongratz, H. (2023). ", em("Klassifikation von Verfahrensergebnissen."),  
+          "Verfügbar unter: https://github.com/hannahpongratz/classification [Zugriffsdatum].",style="font-size:12px")
     )
   )
 )
