@@ -476,19 +476,18 @@ table_row <- function(name, value, mw, std, rel, conf, roundTo, autoRound, scale
     std <- scale_values[scale_name, "std"]
   }
   conf_int <- calc_confidence_interval(value, std, rel, conf, decimal_places = roundTo)
-  data.frame(
-    name = name,
-    value = paste(round(value, roundTo)),
-    mw = paste(round(mw, roundTo)),
-    std = paste(round(std, roundTo)),
-    avg_interval = paste("[", round(mw-std, roundTo), "; ", round(mw+std, roundTo), "]", sep=""),
-    reliability = rel,
-    conf_interval = paste("[", round(conf_int[1], roundTo), "; ", round(conf_int[2], roundTo), "]", sep=""),
-    classification = get_classification(conf_int, c(mw-std, mw+std)),
-    scale = scale_name,
-    confidence = conf,
-    roundTo = roundTo,
-    autoRound = autoRound)
+  data.frame(name=name,
+             value=paste(round(value,roundTo)),
+             mw=paste(round(mw,roundTo)),
+             std=paste(round(std,roundTo)),
+             avg_interval=paste("[",round(mw-std,roundTo),"; ",round(mw+std,roundTo),"]",sep=""),
+             reliability=rel,
+             conf_interval=paste("[",round(conf_int[1],roundTo),"; ",round(conf_int[2],roundTo),"]",sep=""),
+             classification=get_classification(conf_int, c(mw-std, mw+std)),
+             scale=scale_name,
+             confidence=conf,
+             roundTo=roundTo,
+             autoRound=autoRound)
 }
 # Run the application 
 shinyApp(ui = ui, server = server)
