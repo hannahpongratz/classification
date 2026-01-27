@@ -475,11 +475,7 @@ table_row <- function(name, value, mw, std, rel, conf, roundTo, autoRound, scale
     mw <- scale_values[scale_name, "mw"]
     std <- scale_values[scale_name, "std"]
   }
-
-  conf_int <- calc_confidence_interval(
-    value, std, rel, conf, decimal_places = roundTo
-  )
-
+  conf_int <- calc_confidence_interval(value, std, rel, conf, decimal_places = roundTo)
   data.frame(
     name = name,
     value = paste(round(value, roundTo)),
@@ -492,8 +488,7 @@ table_row <- function(name, value, mw, std, rel, conf, roundTo, autoRound, scale
     scale = scale_name,
     confidence = conf,
     roundTo = roundTo,
-    autoRound = autoRound
-  )
+    autoRound = autoRound)
 }
 # Run the application 
 shinyApp(ui = ui, server = server)
