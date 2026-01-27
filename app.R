@@ -472,7 +472,7 @@ table_row <- function(name, value, mw, std, rel, conf, roundTo, autoRound, scale
   conf  <- as.numeric(conf)
 
   if (scale_name != "Benutzerdefiniert"){
-    mw  <- scale_values[scale_name, "mw"]
+    mw <- scale_values[scale_name, "mw"]
     std <- scale_values[scale_name, "std"]
   }
 
