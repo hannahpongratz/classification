@@ -465,11 +465,17 @@ empty_table_row <- function(){
                     autoRound=logical()))
 }
 table_row <- function(name, value, mw, std, rel, conf, roundTo, autoRound, scale_name){
+
+  value <- as.numeric(value)
+  mw    <- as.numeric(mw)
+  std   <- as.numeric(std)
+  conf  <- as.numeric(conf)
+
   if (scale_name != "Benutzerdefiniert"){
     mw <- scale_values[scale_name, "mw"]
     std <- scale_values[scale_name, "std"]
   }
-  conf_int <- calc_confidence_interval(as.numeric(value), std,rel, as.numeric(conf),decimal_places=roundTo)
+  conf_int <- calc_confidence_interval(value, std, rel, conf, decimal_places = roundTo)
   data.frame(name=name,
              value=paste(round(value,roundTo)),
              mw=paste(round(mw,roundTo)),
