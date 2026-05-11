@@ -79,15 +79,6 @@ server <- function(input, output,session) {
   edit_mode <- 0
   saved_tables <- list.files(pattern=".RData")
   saved_values <- reactiveVal(empty_table_row())
-  # if (length(saved_tables)==0){
-  #   saved_values <- reactiveVal(empty_table_row())
-  # } else {
-  #   saved_tables_info <- file.info(saved_tables)
-  #   saved_tables <- saved_tables[order(saved_tables_info$mtime,decreasing = T)]
-  #   load(saved_tables[1])
-  #   loaded_table(sub(".RData", "", saved_tables[1]))
-  #   saved_values <- reactiveVal(s_values)
-  # }
   
   output$classification <- renderText({
     confidence <- as.numeric(input$confidence)
@@ -413,9 +404,13 @@ empty_table_row <- function(){
 }
 
 table_row <- function(name, value, mw, std, rel, conf, roundTo, autoRound, scale_name, model_name){
+
   if (scale_name != "Benutzerdefiniert"){
     mw <- scale_values[scale_name, "mw"]
     std <- scale_values[scale_name, "std"]
+  } else {
+    mw <- as.numeric(mw)
+    std <- as.numeric(std)
   }
   
   if (scale_name == "Prozentrang") {
