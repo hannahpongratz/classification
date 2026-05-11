@@ -1,41 +1,44 @@
 # Zitationsvorschlag: 
-# Pongratz, H. (2023). Klassifikation von Verfahrensergebnissen.  Verfügbar unter: https://github.com/hannahpongratz/classification [Zugriffsdatum].
+# Pongratz, H. (2023). Klassifikation von Verfahrensergebnissen. Verfügbar unter: https://github.com/hannahpongratz/classification [Zugriffsdatum].
 
-# Bitte shiny & shinyjs installieren!
-library(shiny) # install.packages("shiny")
-library(shinyjs) # install.packages("shinyjs")
+library(shiny)
+library(shinyjs)
 
-# Wenn direkt in Word exportiert werden soll bitte auch Pakete officer & flextable installieren
-officer_loaded = require(officer) # install.packages("officer")
-flextable_loaded = require(flextable) # install.packages("flextable")
+officer_loaded = require(officer)
+flextable_loaded = require(flextable)
 
-scale_values <- data.frame(mw=c(100,100,50,5),std=c(15,10,10,2),row.names = c("IQ-Skala","Z-Skala","T-Skala","Stanine"))
+scale_values <- data.frame(mw=c(100,0,50,5,50),std=c(15,1,10,2,1),row.names = c("IQ-Skala","Z-Skala","T-Skala","Stanine","Prozentrang"))
 
-calc_confidence_interval <- function(test_value,  std, reliability, confidence,decimal_places=0){
+calc_confidence_interval <- function(test_value, std, reliability, confidence, decimal_places=0){
   confidence_interval <- qnorm(c((1-confidence/100)/2, 1-(1-confidence/100)/2)) * std * sqrt(1-reliability) + test_value
   return(round(confidence_interval, decimal_places))
 }
-get_classification <- function(confidence_interval, boundaries){
-  c1 = min(which(confidence_interval[1] < c(boundaries, Inf)))
-  c2 = max(which(confidence_interval[2] > c(-Inf, boundaries)))
+
+get_classification <- function(confidence_interval, mw, std, model){
+  if(model == "Standardmodell"){
+    bounds <- c(mw-2*std, mw-std, mw+std, mw+2*std)
+    labels <- c("Weit unterdurchschnittlich", "Unterdurchschnittlich", "Durchschnittlich", "Überdurchschnittlich", "Weit überdurchschnittlich")
+  } else {
+    bounds <- c(mw-1.5*std, mw-0.5*std, mw+0.5*std, mw+1.5*std)
+    labels <- c("Sehr niedrig", "Niedrig", "Durchschnittlich", "Hoch", "Sehr hoch")
+  }
+  
+  c1 = min(which(confidence_interval[1] < c(bounds, Inf)))
+  c2 = max(which(confidence_interval[2] > c(-Inf, bounds)))
   cs <- unique(c(c1,c2))
-  labels <- c("Unterdurchschnittlich", "Durchschnittlich","Überdurchschnittlich")
-  return(paste(paste(labels[cs],collapse=" - ")))
+  return(paste(labels[cs], collapse=" - "))
 }
 
-# Define UI for application 
 ui <- fluidPage(
-  
   useShinyjs(),
-  # Application title
   titlePanel("Klassifikation von Verfahrensergebnissen"),
-  
   sidebarLayout(
     sidebarPanel(
       textInput("parameter", "Name",""),
       selectInput("confidence","Alpha",choices=c("10%"=90,"5%"=95)),
       sliderInput("reliability","Reliabilität",min=0,max=1,step=0.01,value=0.8),
-      selectInput("scale","Skala",choices=c("IQ-Skala","Z-Skala","T-Skala","Stanine","Benutzerdefiniert")),
+      selectInput("scale","Skala",choices=c("IQ-Skala","Z-Skala","T-Skala","Stanine","Prozentrang","Benutzerdefiniert")),
+      selectInput("model", "Klassifikationsmodell", choices=c("Standardmodell", "Marburger Modell")),
       textInput("value","Testwert",value=""),
       conditionalPanel(condition="input.scale=='Benutzerdefiniert'",
                        textInput("mw","Mittelwert"),
@@ -46,24 +49,21 @@ ui <- fluidPage(
         div(checkboxInput("autoRound",label="auto",value = F),style="padding-top:20px;padding-left:5px;"),
         cellArgs=list(style="overflow:visible"), cellWidths = c("60%","40%")
       ),
+      # actionButton("new_combination","Neuer Wert"),
       actionButton("save_combination","Wert speichern"),
       actionButton("load_combination","Wert bearbeiten"),
-      actionButton("new_combination","Neuer Wert"),
       actionButton("delete_combination","Wert(e) löschen"),
-      
     ),
-    
     mainPanel(
       textOutput("classification"),
       textOutput("confidence_bounds"),
-      div(plotOutput("confidence_plot"),style="height:300px"),
+      div(plotOutput("confidence_plot",width = "100%"),style="height:300px"),
       textOutput("dataset_name"),
       div(tableOutput("saved_values"), style="font-size:65%"),
+      actionButton("new_table","Neuer Datensatz"),
       actionButton("save_table","Datensatz speichern"),
       actionButton("load_table","Datensatz laden"),
-      actionButton("new_table","Neuer Datensatz"),
       actionButton("export","Exportieren (Word)"),
-      
       style="font-size:20px",
       div(br(),"Zitationsvorschlag: Pongratz, H. (2023). ", em("Klassifikation von Verfahrensergebnissen."),  
           "Verfügbar unter: https://github.com/hannahpongratz/classification [Zugriffsdatum].",style="font-size:12px")
@@ -71,26 +71,24 @@ ui <- fluidPage(
   )
 )
 
-# Define server logic 
 server <- function(input, output,session) {
-  # Setup 
   if (!(officer_loaded)&flextable_loaded){
     hide("export")
   } 
   loaded_table <- reactiveVal()
   edit_mode <- 0
   saved_tables <- list.files(pattern=".RData")
-  if (length(saved_tables)==0){
-    saved_values <- reactiveVal(empty_table_row())
-  } else {
-    saved_tables_info <- file.info(saved_tables)
-    saved_tables <- saved_tables[order(saved_tables_info$mtime,decreasing = T)]
-    load(saved_tables[1])
-    loaded_table(sub(".RData", "", saved_tables[1]))
-    saved_values <- reactiveVal(s_values)
-  }
+  saved_values <- reactiveVal(empty_table_row())
+  # if (length(saved_tables)==0){
+  #   saved_values <- reactiveVal(empty_table_row())
+  # } else {
+  #   saved_tables_info <- file.info(saved_tables)
+  #   saved_tables <- saved_tables[order(saved_tables_info$mtime,decreasing = T)]
+  #   load(saved_tables[1])
+  #   loaded_table(sub(".RData", "", saved_tables[1]))
+  #   saved_values <- reactiveVal(s_values)
+  # }
   
-  # Outputs
   output$classification <- renderText({
     confidence <- as.numeric(input$confidence)
     test_value <- as.numeric(gsub(",", ".", input$value))
@@ -101,19 +99,22 @@ server <- function(input, output,session) {
       std <- scale_values[input$scale, "std"]
       mw <- scale_values[input$scale, "mw"]
     }
+    
     if (!(is.na(std) | is.na(mw) | is.na(test_value))){
-      boundaries <- c(mw-std, mw+std)
-      confidence_interval <- calc_confidence_interval(test_value,  std, input$reliability, confidence,input$roundTo)
-      c1 = min(which(confidence_interval[1]<c(boundaries, Inf)))
-      c2 = max(which(confidence_interval[2]>c(-Inf, boundaries)))
-      cs <- unique(c(c1,c2))
-      labels <- c("Unterdurchschnittlich", "Durchschnittlich","Überdurchschnittlich")
-      return(paste("Klassifikation:", paste(labels[cs],collapse=" - ")))
-      
+      if (input$scale == "Prozentrang") {
+        z_val <- qnorm(ifelse(test_value >= 100, 99.9, ifelse(test_value <= 0, 0.1, test_value)) / 100)
+        ki_z <- calc_confidence_interval(z_val, 1, input$reliability, confidence, decimal_places=5)
+        res <- get_classification(ki_z, 0, 1, input$model)
+      } else {
+        ki <- calc_confidence_interval(test_value, std, input$reliability, confidence, input$roundTo)
+        res <- get_classification(ki, mw, std, input$model)
+      }
+      return(paste("Klassifikation:", res))
     } else {
       return("Keine zulässigen Angaben")
     }
   })
+  
   output$confidence_bounds <- renderText({
     confidence <- as.numeric(input$confidence)
     test_value <- as.numeric(gsub(",", ".", input$value))
@@ -123,10 +124,16 @@ server <- function(input, output,session) {
       std <- scale_values[input$scale, "std"]
     }
     if (!(is.na(test_value) | is.na(std))){
-      confidence_interval <- calc_confidence_interval(test_value,  std, input$reliability, confidence,input$roundTo)
+      if (input$scale == "Prozentrang") {
+        z_val <- qnorm(ifelse(test_value >= 100, 99.9, ifelse(test_value <= 0, 0.1, test_value)) / 100)
+        ki_z <- calc_confidence_interval(z_val, 1, input$reliability, confidence, decimal_places=5)
+        confidence_interval <- pnorm(ki_z) * 100
+      } else {
+        confidence_interval <- calc_confidence_interval(test_value, std, input$reliability, confidence, input$roundTo)
+      }
       return(paste("Grenzen Konfidenzintervall: [", 
-                   round(confidence_interval[1],2),";",
-                   round(confidence_interval[2],2),"]",
+                   round(confidence_interval[1], input$roundTo), ";",
+                   round(confidence_interval[2], input$roundTo), "]",
                    sep=""))
     }
   })
@@ -142,34 +149,67 @@ server <- function(input, output,session) {
       mw <- scale_values[input$scale, "mw"]
     }
     if (!(is.na(std) | is.na(mw) | is.na(test_value))){
-      x <- seq(mw-3*std, mw+3*std, length = 501)
-      y <- dnorm(x, mw, std)
-      conf_interval = calc_confidence_interval(test_value, std, input$reliability, confidence,input$roundTo)
-      axis_bounds <- c(mw-3*std,mw-2*std,mw,mw+2*std,mw+3*std)
+      plot_val <- test_value
+      plot_mw <- mw
+      plot_std <- std
+      
+      if (input$scale == "Prozentrang") {
+        plot_val <- qnorm(ifelse(test_value >= 100, 99.9, ifelse(test_value <= 0, 0.1, test_value)) / 100)
+        plot_mw <- 0
+        plot_std <- 1
+        conf_interval <- calc_confidence_interval(plot_val, 1, input$reliability, confidence, decimal_places=5)
+      } else {
+        conf_interval <- calc_confidence_interval(test_value, std, input$reliability, confidence, input$roundTo)
+      }
+      
+      x <- seq(plot_mw-3*plot_std, plot_mw+3*plot_std, length = 501)
+      y <- dnorm(x, plot_mw, plot_std)
+      
+      if(input$model == "Standardmodell"){
+        axis_bounds <- c(plot_mw-3*plot_std,plot_mw-2.5*plot_std, plot_mw-1.5*plot_std, plot_mw, plot_mw+1.5*plot_std, plot_mw+2.5*plot_std,plot_mw+3*plot_std)
+        labels_axis <- c("","Weit Unterdurchschn.", "Unterdurchschn.", "Durchschnittlich", "Überdurchschn.", "Weit überdurchschn.","")
+      } else {
+        axis_bounds <- c(plot_mw-3*plot_std,plot_mw-2.25*plot_std, plot_mw-1*plot_std, plot_mw, plot_mw+1*plot_std, plot_mw+2.25*plot_std,plot_mw+3*plot_std)
+        labels_axis <- c("", "Sehr niedrig", "Niedrig", "Durchschnittlich", "Hoch", "Sehr hoch","")
+      }
+      
       par(mar=c(3,0,0,0))
-      plot(c(test_value, test_value), c(0, dnorm(test_value, mw, std)), type = "l", axes = FALSE, 
-           xlab = "", ylab = "",ylim=c(0,max(y)*1.1),xlim=axis_bounds[c(1,5)],col=rgb(0.7,0.1,0.1),lwd=4) # Plot value of subject
+      plot(c(plot_val, plot_val), c(0, dnorm(plot_val, plot_mw, plot_std)), type = "l", axes = FALSE, 
+           xlab = "", ylab = "", ylim=c(0, max(y)*1.1), xlim=axis_bounds[c(1,7)], col=rgb(0.7,0.1,0.1), lwd=4)
       
-      lines(x,y,lty=1,lwd=3) # Add normal distribution
-      lines(c(mw-std,mw-std), c(0, dnorm(mw-std, mw, std)),lwd = 1.5, lty = 3) # Plot lines at +/-1 SD
-      lines(c(mw+std,mw+std), c(0, dnorm(mw+std, mw, std)),lwd = 1.5, lty = 3)
+      if(input$model == "Standardmodell"){
+        lines(c(mw-std,mw-std), c(0, dnorm(mw-std, mw, std)),lwd = 1.5, lty = 3) 
+        lines(c(mw+std,mw+std), c(0, dnorm(mw+std, mw, std)),lwd = 1.5, lty = 3)
+        lines(c(mw-2*std,mw-2*std), c(0, dnorm(mw-2*std, mw, std)),lwd = 1.5, lty = 3)
+        lines(c(mw+2*std,mw+2*std), c(0, dnorm(mw+2*std, mw, std)),lwd = 1.5, lty = 3)
+      } else {
+        lines(c(mw-0.5*std,mw-0.5*std), c(0, dnorm(mw-0.5*std, mw, std)),lwd = 1.5, lty = 3) 
+        lines(c(mw+0.5*std,mw+0.5*std), c(0, dnorm(mw+0.5*std, mw, std)),lwd = 1.5, lty = 3)
+        lines(c(mw-1.5*std,mw-1.5*std), c(0, dnorm(mw-1.5*std, mw, std)),lwd = 1.5, lty = 3)
+        lines(c(mw+1.5*std,mw+1.5*std), c(0, dnorm(mw+1.5*std, mw, std)),lwd = 1.5, lty = 3)
+      }
       
-      x_errorshade = c(conf_interval[1],x[x>=conf_interval[1] & x<=conf_interval[2]], conf_interval[2])
-      y_errorshade = c(0,y[x>=conf_interval[1] & x<=conf_interval[2]],0)
-      polygon(x_errorshade, y_errorshade, col = rgb(0.7,0.1,0.1,0.2),border = NA) # Plot confidence interval
-      axis(side = 1, at = axis_bounds, pos = 0, lwd.ticks = 0,labels=c("","Unterdurchschnittlich", "Durchschnittlich","Überdurchschnittlich","")) # Plot axis
+     
       
-      # Plot legend
-      legend(x=mw-3*std,y=max(y)*1.1,"Testwert", lty=1, col=rgb(0.7,0.1,0.1), box.lty = 0,lwd=2, bg="transparent")
-      legend(x=mw-3*std,y=max(y)*1.03,"Konfidenzintervall",fill=rgb(0.7,0.1,0.1,0.2), box.lty = 0, bg="transparent")
-      legend(x=mw-3*std,y=max(y)*0.96,"Normverteilung", lty=1,lwd=2, col="black", box.lty = 0, bg="transparent")
+      lines(x,y,lty=1,lwd=3)
+      
+      x_errorshade = c(conf_interval[1], x[x>=conf_interval[1] & x<=conf_interval[2]], conf_interval[2])
+      y_errorshade = c(0, y[x>=conf_interval[1] & x<=conf_interval[2]], 0)
+      polygon(x_errorshade, y_errorshade, col = rgb(0.7,0.1,0.1,0.2), border = NA)
+      
+      axis(side = 1, at = axis_bounds, pos = 0, lwd.ticks = 0, labels=labels_axis)
+      legend(x=plot_mw-3*plot_std, y=max(y)*1.1, "Testwert", lty=1, col=rgb(0.7,0.1,0.1), box.lty = 0, lwd=2, bg="transparent")
+      legend(x=plot_mw-3*plot_std, y=max(y)*1.03, "Konfidenzintervall", fill=rgb(0.7,0.1,0.1,0.2), box.lty = 0, bg="transparent")
+      legend(x=plot_mw-3*plot_std, y=max(y)*0.96, "Normverteilung", lty=1, lwd=2, col="black", box.lty = 0, bg="transparent")
     }
-  },height=300)
+  }, height=300)
+  
   
   output$dataset_name <- renderText({loaded_table()})
   
   output$saved_values <- renderTable({
     s_values <- saved_values()
+    if (nrow(s_values) == 0) return(NULL)
     if (length(unique(s_values$scale))== 1 & unique(s_values$scale)[1]!= "Benutzerdefiniert"){
       table_names <- c("Maß",sub("Skala", "Wert", unique(s_values$scale)),"Reliabilität","KI","Klassifikation")
       s_values <- s_values[,c(1,2,6,7,8)]
@@ -181,7 +221,6 @@ server <- function(input, output,session) {
     return(s_values)
   },align='l')
   
-  # Observes
   observeEvent(input$autoRound, {
     if (input$autoRound){
       shinyjs::disable("roundTo")
@@ -212,42 +251,24 @@ server <- function(input, output,session) {
   observeEvent(input$save_combination, {
     if (input$parameter != ""){
       s_values <- saved_values()
-      if (edit_mode>0){
-        s_values[edit_mode,] <- table_row(input$parameter, as.numeric(input$value), input$mw, input$std, input$reliability, input$confidence, input$roundTo,input$autoRound, input$scale)
-      }else{
-        s_values[nrow(s_values)+1,] <- table_row(input$parameter, as.numeric(input$value), input$mw, input$std, input$reliability, input$confidence, input$roundTo, input$autoRound, input$scale)
-      }
+      row <- table_row(input$parameter, as.numeric(input$value), input$mw, input$std, input$reliability, input$confidence, input$roundTo, input$autoRound, input$scale, input$model)
+      if (edit_mode>0) s_values[edit_mode,] <- row else s_values[nrow(s_values)+1,] <- row
       saved_values(s_values)
+      updateTextInput(session, "parameter", value="")
+      updateTextInput(session, "value", value="")
+      updateActionButton(session, "save_combination","Wert speichern")
+      edit_mode <<- 0
     } else {
-      showModal(modalDialog(
-        "Bitte zuerst Name eingeben!", br(),
-        modalButton("Ok"),
-        easyClose = T,
-        footer = NULL
-      ))
+      showModal(modalDialog("Bitte zuerst Name eingeben!", modalButton("Ok")))
     }
-    
   })
   observeEvent(input$load_combination, {
     s_values <- saved_values()
-    if (nrow(s_values>0)){
+    if (nrow(s_values)>0){
       options <- s_values$name
-      showModal(modalDialog(
-        title = "Wert laden",
-        selectInput("select_edit","Wert auswählen",choices = options),
-        actionButton("confirm_edit","Bestätigen"),
-        modalButton("Abbrechen"),
-        easyClose = T,
-        footer = NULL
-      ))
+      showModal(modalDialog(title = "Wert laden", selectInput("select_edit","Wert auswählen",choices = options), actionButton("confirm_edit","Bestätigen"), modalButton("Abbrechen"), easyClose = T, footer = NULL))
     } else{
-      showModal(modalDialog(
-        title = "Wert laden",
-        "Noch keine gespeicherten Werte",br(),
-        modalButton("Abbrechen"),
-        easyClose = T,
-        footer = NULL
-      ))
+      showModal(modalDialog(title = "Wert laden", "Noch keine gespeicherten Werte",br(), modalButton("Abbrechen"), easyClose = T, footer = NULL))
     }
   })
   observeEvent(input$confirm_edit, {
@@ -260,6 +281,7 @@ server <- function(input, output,session) {
       updateTextInput(session, "std", value=selected$STD)
     }
     updateTextInput(session, "parameter", value=selected$name)
+    updateSelectInput(session, "model", selected = selected$model)
     updateTextInput(session, "value", value=selected$value)
     updateCheckboxInput(session, "autoRound",value=F)
     updateNumericInput(session, "roundTo",value=selected$roundTo)
@@ -267,6 +289,7 @@ server <- function(input, output,session) {
     updateSelectInput(session, "confidence", selected=selected$confidence)
     updateActionButton(session, "save_combination","Änderungen speichern")
     removeModal()
+    
   })
   observeEvent(input$new_combination, {
     edit_mode <<- 0
@@ -278,22 +301,9 @@ server <- function(input, output,session) {
     s_values = saved_values()
     if (nrow(s_values)>0){
       choices = s_values$name
-      showModal(modalDialog(
-        title = "Werte löschen",
-        selectInput("values_to_delete", "Auswählen:", choices = choices, multiple=T),
-        actionButton("confirm_delete","Löschen"),
-        modalButton("Abbrechen"),
-        easyClose = T,
-        footer = NULL
-      ))
+      showModal(modalDialog(title = "Werte löschen", selectInput("values_to_delete", "Auswählen:", choices = choices, multiple=T), actionButton("confirm_delete","Löschen"), modalButton("Abbrechen"), easyClose = T, footer = NULL))
     }else{
-      showModal(modalDialog(
-        title = "Wert laden",
-        "Noch keine gespeicherten Werte",br(),
-        modalButton("Abbrechen"),
-        easyClose = T,
-        footer = NULL
-      ))
+      showModal(modalDialog(title = "Wert laden", "Noch keine gespeicherten Werte",br(), modalButton("Abbrechen"), easyClose = T, footer = NULL))
     }
   })
   observeEvent(input$confirm_delete,{
@@ -303,72 +313,34 @@ server <- function(input, output,session) {
     removeModal()
   })
   observeEvent(input$save_table,{
-    showModal(modalDialog(
-      title = "Datensatz speichern",
-      textInput("dataset_name","Speichern als:",loaded_table()),
-      actionButton("confirm_save","Bestätigen"),
-      modalButton("Abbrechen"),
-      easyClose = T,
-      footer = NULL
-    ))
+    showModal(modalDialog(title = "Datensatz speichern", textInput("dataset_name_input","Speichern als:",loaded_table()), actionButton("confirm_save","Bestätigen"), modalButton("Abbrechen"), easyClose = T, footer = NULL))
   })
   observeEvent(input$confirm_save,{
     s_values <- saved_values()
-    save(s_values,file=paste(input$dataset_name,".RData",sep=""))
-    loaded_table(input$dataset_name)
+    save(s_values,file=paste(input$dataset_name_input,".RData",sep=""))
+    loaded_table(input$dataset_name_input)
     removeModal()
   })
   observeEvent(input$load_table,{
     file_names <-  sub(".RData","",list.files(pattern=".RData"))
     if (length(file_names)>0){
-      showModal(modalDialog(
-        title = "Datensatz speichern",
-        selectInput("to_load","Datensatz:", choices = file_names),
-        actionButton("confirm_load","Bestätigen"),
-        modalButton("Abbrechen"),
-        easyClose = T,
-        footer = NULL
-      ))
+      showModal(modalDialog(title = "Datensatz laden", selectInput("to_load","Datensatz:", choices = file_names), actionButton("confirm_load","Bestätigen"), modalButton("Abbrechen"), easyClose = T, footer = NULL))
     }else{
-      showModal(modalDialog(
-        "Noch keine gespeicherten Datensätze", br(),
-        modalButton("Abbrechen"),
-        easyClose = T,
-        footer = NULL
-      ))
+      showModal(modalDialog("Noch keine gespeicherten Datensätze", br(), modalButton("Abbrechen"), easyClose = T, footer = NULL))
     }
   })
   observeEvent(input$confirm_load, {
     load(paste(input$to_load, ".RData",sep=""))
     saved_values(s_values)
-    loaded_table <<- paste(input$to_load, ".RData",sep="")
+    loaded_table(input$to_load)
     removeModal()
   })
   observeEvent(input$export,{
     choices <- unique(c(loaded_table(),sub(".RData","",list.files(pattern=".RData"))))
-    showModal(modalDialog(
-      title="Exportieren",
-      selectInput("datasets_to_export","Dastensätze auswählen",choices = choices, multiple = T, selected =loaded_table()),
-      textInput("export_to","Dateiname:","ZKEA"),
-      "Hinweis: Existiert bereits ein Word-Dokument mit diesem Namen wird der Inhalt überschrieben",br(),
-      checkboxInput("rel_table","Tabelle mit Reliabilitäten hinzufügen",T),
-      actionButton("confirm_export","Bestätigen"),
-      modalButton("Abbrechen"),
-      easyClose = T,
-      footer = NULL
-    ))
+    showModal(modalDialog(title="Exportieren", selectInput("datasets_to_export","Datensätze auswählen",choices = choices, multiple = T, selected =loaded_table()), textInput("export_to","Dateiname:","ZKEA"), checkboxInput("rel_table","Tabelle mit Reliabilitäten hinzufügen",T), actionButton("confirm_export","Bestätigen"), modalButton("Abbrechen"), easyClose = T, footer = NULL))
   })
   observeEvent(input$new_table, {
-    showModal(modalDialog(
-      title="Neuer Datensatz",
-      textInput("new_dataset_name","Testname:"),
-      "Hinweis: Alle nicht gespeicherten Änderungen gehen verloren.",
-      br(),
-      actionButton("confirm_new_table","Bestätigen"),
-      modalButton("Abbrechen"),
-      easyClose = T,
-      footer = NULL
-    ))
+    showModal(modalDialog(title="Neuer Datensatz", textInput("new_dataset_name","Testname:"), actionButton("confirm_new_table","Bestätigen"), modalButton("Abbrechen"), easyClose = T, footer = NULL))
   })
   observeEvent(input$confirm_new_table, {
     s_values <- empty_table_row()
@@ -404,11 +376,7 @@ server <- function(input, output,session) {
   add_tables <- function(d,s_values, loaded_table){
     my_format <- fp_text(font = "Times New Roman", font.size=11)
     set_flextable_defaults(font.size = 11, theme_fun = theme_vanilla)
-    if (is.null(loaded_table)){
-      testname <- "Test"
-    } else {
-      testname <- loaded_table
-    }
+    testname <- if(is.null(loaded_table)) "Test" else loaded_table
     if(input$rel_table){
       rel_table <- s_values[,c("name","reliability")]
       rel_table$classification <- unlist(lapply(rel_table[,2], function(x){
@@ -418,70 +386,55 @@ server <- function(input, output,session) {
       names(rel_table) <- c("Maß","Wert", "Klassifikation nach Evers et al. (2013)")
       rel_table_flex <- format_flex_table(rel_table)
       rel_table_flex <- width(rel_table_flex, width = c(3,1.5,6), unit = "cm")
-      rel_table_flex <- set_caption(rel_table_flex, as_paragraph(as_i(as_chunk("Tabelle 0",my_format))
-                                                                 ,as_chunk(paste(". Zufallskritische Einzelfallauswertung des ",testname,", Reliabilität",sep=""),props = my_format)),fp_p = fp_par(padding = 0))
-    }
-    if (length(unique(s_values$scale))== 1 & unique(s_values$scale)[1]!= "Benutzerdefiniert"){
-      table_names <- c("Maßs",sub("Skala", "Wert", unique(s_values$scale)),"Reliabilität","Konfidenzintervall des Testwerts","Klassifikation nach Westhoff und Kluck (2014)")
-      s_values <- s_values[,c(1,2,6,7,8)]
-      names(s_values) <- table_names
-      s_flex <- format_flex_table(s_values)
-      s_flex <- width(s_flex, width = c(2,1.5,2.1,4.8,5), unit = "cm")
-    } else{
-      s_values <- s_values[,1:8]
-      names(s_values) <- c("Maß","Rohwert","Mittelwert der Rohwerte","Standardabweichung der Rohwerte",
-                           "Durchschnittbereich der Rohwerte nach Westhoff und Kluck (2014)","Reliabilität",
-                           "Konfidenzintervall des Testwerts","Klassifikation nach Westhoff und Kluck (2014)")
-      s_flex <- format_flex_table(s_values)
-      s_flex <- width(s_flex, width = c(1.5,1.4,2,2,3,1.5,2.5,2.5), unit = "cm")
-    }
-    s_flex <- set_caption(s_flex, as_paragraph(as_i(as_chunk("Tabelle 0",my_format))
-                                               ,as_chunk(paste(". Zufallskritische Einzelfallauswertung des ",testname,", Konfidenzintervalle der wahren Testwerte",sep=""),
-                                                         props = my_format)),fp_p = fp_par(padding = 0))
-    
-    if(input$rel_table){
+      rel_table_flex <- set_caption(rel_table_flex, as_paragraph(as_i(as_chunk("Tabelle 0",my_format)),as_chunk(paste(". Zufallskritische Einzelfallauswertung des ",testname,", Reliabilität",sep=""),props = my_format)),fp_p = fp_par(padding = 0))
       d <- body_add_flextable(d, value = rel_table_flex,align="left")
       d <- body_add_par(d,"")
     }
+    if (length(unique(s_values$scale))== 1 & unique(s_values$scale)[1]!= "Benutzerdefiniert"){
+      table_names <- c("Maß",sub("Skala", "Wert", unique(s_values$scale)),"Reliabilität","KI des Testwerts","Klassifikation (Westhoff & Kluck)")
+      s_values_out <- s_values[,c(1,2,6,7,8)]
+      names(s_values_out) <- table_names
+      s_flex <- format_flex_table(s_values_out)
+      s_flex <- width(s_flex, width = c(2,1.5,2.1,4.8,5), unit = "cm")
+    } else{
+      s_values_out <- s_values[,1:8]
+      names(s_values_out) <- c("Maß","Rohwert","MW","SD","Durchschnittbereich","Reliabilität","KI des Testwerts","Klassifikation")
+      s_flex <- format_flex_table(s_values_out)
+      s_flex <- width(s_flex, width = c(1.5,1.4,2,2,3,1.5,2.5,2.5), unit = "cm")
+    }
+    s_flex <- set_caption(s_flex, as_paragraph(as_i(as_chunk("Tabelle 0",my_format)),as_chunk(paste(". Zufallskritische Einzelfallauswertung des ",testname,", Konfidenzintervalle",sep=""),props = my_format)),fp_p = fp_par(padding = 0))
     d <- body_add_flextable(d,value = s_flex,align="left")
     return(d)
   }
-  
 }
-
 
 empty_table_row <- function(){
-  return(data.frame(name=character(),
-                    value=character(),
-                    mw=character(),
-                    std=character(),
-                    avg_interval=character(),
-                    reliability=double(),
-                    conf_interval=character(),
-                    classification=character(),
-                    scale=character(),
-                    confidence=integer(),
-                    roundTo=integer(),
-                    autoRound=logical()))
+  return(data.frame(name=character(), value=character(), mw=character(), std=character(), avg_interval=character(), reliability=double(), conf_interval=character(), classification=character(), scale=character(), confidence=integer(), roundTo=integer(), autoRound=logical(),  model=character()))
 }
-table_row <- function(name, value, mw, std, rel, conf, roundTo, autoRound, scale_name){
+
+table_row <- function(name, value, mw, std, rel, conf, roundTo, autoRound, scale_name, model_name){
   if (scale_name != "Benutzerdefiniert"){
     mw <- scale_values[scale_name, "mw"]
     std <- scale_values[scale_name, "std"]
   }
-  conf_int <- calc_confidence_interval(as.numeric(value), std,rel, as.numeric(conf),decimal_places=roundTo)
-  data.frame(name=name,
-             value=paste(round(value,roundTo)),
-             mw=paste(round(mw,roundTo)),
-             std=paste(round(std,roundTo)),
-             avg_interval=paste("[",round(mw-std,roundTo),"; ",round(mw+std,roundTo),"]",sep=""),
-             reliability=rel,
-             conf_interval=paste("[",round(conf_int[1],roundTo),"; ",round(conf_int[2],roundTo),"]",sep=""),
-             classification=get_classification(conf_int, c(mw-std, mw+std)),
-             scale=scale_name,
-             confidence=conf,
-             roundTo=roundTo,
-             autoRound=autoRound)
+  
+  if (scale_name == "Prozentrang") {
+    z_val <- qnorm(ifelse(value >= 100, 99.9, ifelse(value <= 0, 0.1, value)) / 100)
+    ki_z <- calc_confidence_interval(z_val, 1, rel, as.numeric(conf), decimal_places=5)
+    conf_int_display <- pnorm(ki_z) * 100
+    class_res <- get_classification(ki_z, 0, 1, model_name)
+    avg_bounds <- if(model_name == "Standardmodell") pnorm(c(-1, 1))*100 else pnorm(c(-0.5, 0.5))*100
+  } else {
+    ki <- calc_confidence_interval(as.numeric(value), std, rel, as.numeric(conf), decimal_places=roundTo)
+    conf_int_display <- ki
+    class_res <- get_classification(ki, mw, std, model_name)
+    avg_bounds <- if(model_name == "Standardmodell") c(mw-std, mw+std) else c(mw-0.5*std, mw+0.5*std)
+  }
+  
+  data.frame(name=name, value=paste(round(value,roundTo)), mw=paste(round(mw,roundTo)), std=paste(round(std,roundTo)),
+             avg_interval=paste("[",round(avg_bounds[1],roundTo),"; ",round(avg_bounds[2],roundTo),"]",sep=""),
+             reliability=rel, conf_interval=paste("[",round(conf_int_display[1],roundTo),"; ",round(conf_int_display[2],roundTo),"]",sep=""),
+             classification=class_res, scale=scale_name, confidence=conf, roundTo=roundTo, autoRound=autoRound, model=model_name)
 }
-# Run the application 
+
 shinyApp(ui = ui, server = server)
