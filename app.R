@@ -1,10 +1,10 @@
 # Zitationsvorschlag: 
 # Pongratz, H. (2023). Klassifikation von Verfahrensergebnissen. Verfügbar unter: https://github.com/hannahpongratz/classification [Zugriffsdatum].
 
-library(shiny)
+library(shiny) # Bitte shiny & shinyjs installieren
 library(shinyjs)
 
-officer_loaded = require(officer)
+officer_loaded = require(officer) # Für Export in Word bitte auch officer und felxtable installieren
 flextable_loaded = require(flextable)
 
 scale_values <- data.frame(mw=c(100,0,50,5,50),std=c(15,1,10,2,1),row.names = c("IQ-Skala","Z-Skala","T-Skala","Stanine","Prozentrang"))
