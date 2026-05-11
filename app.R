@@ -145,53 +145,88 @@ server <- function(input, output,session) {
       plot_std <- std
       
       if (input$scale == "Prozentrang") {
-        plot_val <- qnorm(ifelse(test_value >= 100, 99.9, ifelse(test_value <= 0, 0.1, test_value)) / 100)
-        plot_mw <- 0
-        plot_std <- 1
-        conf_interval <- calc_confidence_interval(plot_val, 1, input$reliability, confidence, decimal_places=5)
+        z_val <- qnorm(max(0.001, min(0.999, test_value/100)))
+        ki_z <- calc_confidence_interval(z_val, 1, input$reliability, confidence, decimal_places=5)
+        conf_interval <- pnorm(ki_z) * 100
+
+        x <- c(0,0,100,100)
+        y <- c(0,1,1,0)
+        
+        if(input$model == "Standardmodell"){
+          axis_bounds <- c(0,1.15, 9.1, 50, 90.9, 98.5,100)
+          labels_axis <- c("","Weit Unterdurchschn.", "Unterdurchschn.", "Durchschnittlich", "Überdurchschn.", "Weit überdurchschn.","")
+        } else {
+          axis_bounds <- c(0,3.35, 18.8, 50, 81.2, 96.65,100)
+          labels_axis <- c("", "Sehr niedrig", "Niedrig", "Durchschnittlich", "Hoch", "Sehr hoch","")
+        }
+        
+        par(mar=c(3,0,0,0))
+        plot(c(plot_val, plot_val), c(0, 1), type = "l", axes = FALSE, 
+             xlab = "", ylab = "", ylim=c(0, max(y)*1.15), xlim=axis_bounds[c(1,7)], col=rgb(0.7,0.1,0.1), lwd=4)
+        
+        if(input$model == "Standardmodell"){
+          lines(c(97.7,97.7), c(0, 1),lwd = 1.5, lty = 3) 
+          lines(c(84.1,84.1), c(0, 1),lwd = 1.5, lty = 3)
+          lines(c(15.9,15.9), c(0, 1),lwd = 1.5, lty = 3)
+          lines(c(2.3,2.3), c(0, 1),lwd = 1.5, lty = 3)
+        } else {
+          lines(c(93.3,93.3), c(0, 1),lwd = 1.5, lty = 3) 
+          lines(c(69.1,69.1), c(0, 1),lwd = 1.5, lty = 3)
+          lines(c(30.9,30.9), c(0, 1),lwd = 1.5, lty = 3)
+          lines(c(6.7,6.7), c(0,1),lwd = 1.5, lty = 3)
+        }
+        
+        lines(x,y,lty=1,lwd=3)
+        x_errorshade = c(conf_interval[1],conf_interval[1], conf_interval[2], conf_interval[2])
+        y_errorshade = c(0, 1, 1,  0)
+
+        polygon(x_errorshade, y_errorshade, col = rgb(0.7,0.1,0.1,0.2), border = NA)
+        axis(side = 1, at = axis_bounds, pos = 0, lwd.ticks = 0, labels=labels_axis)
+        legend(x=0, y=1.2, "Testwert", lty=1, col=rgb(0.7,0.1,0.1), box.lty = 0, lwd=2, bg="transparent")
+        legend(x=0, y=1.13, "Konfidenzintervall", fill=rgb(0.7,0.1,0.1,0.2), box.lty = 0, bg="transparent")
+        # legend(x=plot_mw-3*plot_std, y=max(y)*0.96, "Normverteilung", lty=1, lwd=2, col="black", box.lty = 0, bg="transparent")
+        
       } else {
         conf_interval <- calc_confidence_interval(test_value, std, input$reliability, confidence, input$roundTo)
+        x <- seq(plot_mw-3*plot_std, plot_mw+3*plot_std, length = 501)
+        y <- dnorm(x, plot_mw, plot_std)
+        
+        if(input$model == "Standardmodell"){
+          axis_bounds <- c(plot_mw-3*plot_std,plot_mw-2.5*plot_std, plot_mw-1.5*plot_std, plot_mw, plot_mw+1.5*plot_std, plot_mw+2.5*plot_std,plot_mw+3*plot_std)
+          labels_axis <- c("","Weit Unterdurchschn.", "Unterdurchschn.", "Durchschnittlich", "Überdurchschn.", "Weit überdurchschn.","")
+        } else {
+          axis_bounds <- c(plot_mw-3*plot_std,plot_mw-2.25*plot_std, plot_mw-1*plot_std, plot_mw, plot_mw+1*plot_std, plot_mw+2.25*plot_std,plot_mw+3*plot_std)
+          labels_axis <- c("", "Sehr niedrig", "Niedrig", "Durchschnittlich", "Hoch", "Sehr hoch","")
+        }
+        
+        par(mar=c(3,0,0,0))
+        plot(c(plot_val, plot_val), c(0, dnorm(plot_val, plot_mw, plot_std)), type = "l", axes = FALSE, 
+             xlab = "", ylab = "", ylim=c(0, max(y)*1.1), xlim=axis_bounds[c(1,7)], col=rgb(0.7,0.1,0.1), lwd=4)
+        
+        if(input$model == "Standardmodell"){
+          lines(c(mw-std,mw-std), c(0, dnorm(mw-std, mw, std)),lwd = 1.5, lty = 3) 
+          lines(c(mw+std,mw+std), c(0, dnorm(mw+std, mw, std)),lwd = 1.5, lty = 3)
+          lines(c(mw-2*std,mw-2*std), c(0, dnorm(mw-2*std, mw, std)),lwd = 1.5, lty = 3)
+          lines(c(mw+2*std,mw+2*std), c(0, dnorm(mw+2*std, mw, std)),lwd = 1.5, lty = 3)
+        } else {
+          lines(c(mw-0.5*std,mw-0.5*std), c(0, dnorm(mw-0.5*std, mw, std)),lwd = 1.5, lty = 3) 
+          lines(c(mw+0.5*std,mw+0.5*std), c(0, dnorm(mw+0.5*std, mw, std)),lwd = 1.5, lty = 3)
+          lines(c(mw-1.5*std,mw-1.5*std), c(0, dnorm(mw-1.5*std, mw, std)),lwd = 1.5, lty = 3)
+          lines(c(mw+1.5*std,mw+1.5*std), c(0, dnorm(mw+1.5*std, mw, std)),lwd = 1.5, lty = 3)
+        }
+        
+        lines(x,y,lty=1,lwd=3)
+        x_errorshade = c(conf_interval[1], x[x>=conf_interval[1] & x<=conf_interval[2]], conf_interval[2])
+        y_errorshade = c(0, y[x>=conf_interval[1] & x<=conf_interval[2]], 0)
+        
+        polygon(x_errorshade, y_errorshade, col = rgb(0.7,0.1,0.1,0.2), border = NA)
+        axis(side = 1, at = axis_bounds, pos = 0, lwd.ticks = 0, labels=labels_axis)
+        legend(x=plot_mw-3*plot_std, y=max(y)*1.1, "Testwert", lty=1, col=rgb(0.7,0.1,0.1), box.lty = 0, lwd=2, bg="transparent")
+        legend(x=plot_mw-3*plot_std, y=max(y)*1.03, "Konfidenzintervall", fill=rgb(0.7,0.1,0.1,0.2), box.lty = 0, bg="transparent")
+        legend(x=plot_mw-3*plot_std, y=max(y)*0.96, "Normverteilung", lty=1, lwd=2, col="black", box.lty = 0, bg="transparent")
       }
       
-      x <- seq(plot_mw-3*plot_std, plot_mw+3*plot_std, length = 501)
-      y <- dnorm(x, plot_mw, plot_std)
-      
-      if(input$model == "Standardmodell"){
-        axis_bounds <- c(plot_mw-3*plot_std,plot_mw-2.5*plot_std, plot_mw-1.5*plot_std, plot_mw, plot_mw+1.5*plot_std, plot_mw+2.5*plot_std,plot_mw+3*plot_std)
-        labels_axis <- c("","Weit Unterdurchschn.", "Unterdurchschn.", "Durchschnittlich", "Überdurchschn.", "Weit überdurchschn.","")
-      } else {
-        axis_bounds <- c(plot_mw-3*plot_std,plot_mw-2.25*plot_std, plot_mw-1*plot_std, plot_mw, plot_mw+1*plot_std, plot_mw+2.25*plot_std,plot_mw+3*plot_std)
-        labels_axis <- c("", "Sehr niedrig", "Niedrig", "Durchschnittlich", "Hoch", "Sehr hoch","")
-      }
-      
-      par(mar=c(3,0,0,0))
-      plot(c(plot_val, plot_val), c(0, dnorm(plot_val, plot_mw, plot_std)), type = "l", axes = FALSE, 
-           xlab = "", ylab = "", ylim=c(0, max(y)*1.1), xlim=axis_bounds[c(1,7)], col=rgb(0.7,0.1,0.1), lwd=4)
-      
-      if(input$model == "Standardmodell"){
-        lines(c(mw-std,mw-std), c(0, dnorm(mw-std, mw, std)),lwd = 1.5, lty = 3) 
-        lines(c(mw+std,mw+std), c(0, dnorm(mw+std, mw, std)),lwd = 1.5, lty = 3)
-        lines(c(mw-2*std,mw-2*std), c(0, dnorm(mw-2*std, mw, std)),lwd = 1.5, lty = 3)
-        lines(c(mw+2*std,mw+2*std), c(0, dnorm(mw+2*std, mw, std)),lwd = 1.5, lty = 3)
-      } else {
-        lines(c(mw-0.5*std,mw-0.5*std), c(0, dnorm(mw-0.5*std, mw, std)),lwd = 1.5, lty = 3) 
-        lines(c(mw+0.5*std,mw+0.5*std), c(0, dnorm(mw+0.5*std, mw, std)),lwd = 1.5, lty = 3)
-        lines(c(mw-1.5*std,mw-1.5*std), c(0, dnorm(mw-1.5*std, mw, std)),lwd = 1.5, lty = 3)
-        lines(c(mw+1.5*std,mw+1.5*std), c(0, dnorm(mw+1.5*std, mw, std)),lwd = 1.5, lty = 3)
-      }
-      
-     
-      
-      lines(x,y,lty=1,lwd=3)
-      
-      x_errorshade = c(conf_interval[1], x[x>=conf_interval[1] & x<=conf_interval[2]], conf_interval[2])
-      y_errorshade = c(0, y[x>=conf_interval[1] & x<=conf_interval[2]], 0)
-      polygon(x_errorshade, y_errorshade, col = rgb(0.7,0.1,0.1,0.2), border = NA)
-      
-      axis(side = 1, at = axis_bounds, pos = 0, lwd.ticks = 0, labels=labels_axis)
-      legend(x=plot_mw-3*plot_std, y=max(y)*1.1, "Testwert", lty=1, col=rgb(0.7,0.1,0.1), box.lty = 0, lwd=2, bg="transparent")
-      legend(x=plot_mw-3*plot_std, y=max(y)*1.03, "Konfidenzintervall", fill=rgb(0.7,0.1,0.1,0.2), box.lty = 0, bg="transparent")
-      legend(x=plot_mw-3*plot_std, y=max(y)*0.96, "Normverteilung", lty=1, lwd=2, col="black", box.lty = 0, bg="transparent")
+
     }
   }, height=300)
   
